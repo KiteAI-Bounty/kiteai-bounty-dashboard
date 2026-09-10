@@ -47,12 +47,12 @@ test("Beijing Monday midnight is a half-open boundary", () => {
   for (const week of weeks)
     assert.equal(Date.parse(week.endsAt) - Date.parse(week.startsAt), WEEK_MS);
   assert.equal(
-    currentWeek(weeks, new Date("2026-09-20T15:59:59.999Z"))?.number,
+    currentWeek(weeks, new Date("2026-09-15T15:59:59.999Z"))?.number,
     1,
   );
-  assert.equal(currentWeek(weeks, new Date("2026-09-20T16:00:00Z"))?.number, 2);
+  assert.equal(currentWeek(weeks, new Date("2026-09-15T16:00:00Z"))?.number, 2);
   assert.equal(
-    currentWeek(weeks, new Date("2026-10-01T00:00:00+08:00"))?.number,
+    currentWeek(weeks, new Date("2026-09-25T00:00:00+08:00"))?.number,
     3,
   );
   assert.equal(
@@ -61,7 +61,7 @@ test("Beijing Monday midnight is a half-open boundary", () => {
   );
   assert.equal(
     emptyWeekStatus(weeks[0], new Date("2026-09-10T00:00:00Z")),
-    "not_started",
+    "not_submitted",
   );
 });
 test("contribution URL validation rejects lookalike hosts and embedded credentials", () => {
