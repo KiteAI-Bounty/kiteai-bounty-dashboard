@@ -1,0 +1,400 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum ReviewStatus {
+  SUBMITTED
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum EcStatus {
+  QUEUED
+  GENERATING
+  VALIDATION_FAILED
+  READY
+  PR_OPEN
+  CHANGES_REQUESTED
+  CI_FAILED
+  MERGED
+  CLOSED_UNMERGED
+}
+
+enum RegistrationStatus {
+  UNKNOWN
+  PENDING
+  VERIFIED
+  REMOVED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum InviteStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
+model User {
+  id           String       @id @default(cuid())
+  wallet       String       @unique @db.VarChar(42)
+  role         Role         @default(USER)
+  disabledAt   DateTime?    @db.Timestamptz(3)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+  github       GithubAccount?
+  enrollments  Enrollment[]
+  memberships  ProjectMember[]
+  submissions  Submission[]
+  reviews      SubmissionReview[]
+  completions  WeeklyCompletion[]
+  entitlements RewardEntitlement[]
+  sessions     Session[]
+  oauthStates  OAuthState[]
+  invite       ParticipantInvite?
+}
+
+model AdminWallet {
+  id        String   @id @default(cuid())
+  wallet    String   @unique @db.VarChar(42)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model GithubAccount {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  githubUserId BigInt   @unique
+  login        String
+  avatarUrl    String?
+  boundAt      DateTime @default(now()) @db.Timestamptz(3)
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model WalletNonce {
+  id         String    @id @default(cuid())
+  wallet     String    @db.VarChar(42)
+  chainId    Int
+  nonce      String
+  nonceHash  String    @unique
+  message    String
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt  DateTime  @db.Timestamptz(3)
+  consumedAt DateTime? @db.Timestamptz(3)
+  inviteId   String?
+  invite     ParticipantInvite? @relation(fields: [inviteId], references: [id], onDelete: SetNull)
+  @@index([expiresAt])
+  @@index([wallet, createdAt])
+  @@index([inviteId])
+}
+
+model ParticipantInvite {
+  id          String       @id @default(cuid())
+  displayName String
+  contact     String       @unique
+  githubLogin String?
+  wallet      String       @unique @db.VarChar(42)
+  status      InviteStatus @default(PENDING)
+  userId      String?      @unique
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
+  activatedAt DateTime?    @db.Timestamptz(3)
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  challenges  WalletNonce[]
+
+  @@index([status])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  chainId   Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([expiresAt])
+}
+
+model OAuthState {
+  id           String    @id @default(cuid())
+  stateHash    String    @unique
+  codeVerifier String
+  userId       String
+  returnTo     String    @default("/dashboard")
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt    DateTime  @db.Timestamptz(3)
+  consumedAt   DateTime? @db.Timestamptz(3)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model Campaign {
+  id          String       @id
+  name        String
+  timezone    String       @default("Asia/Shanghai")
+  startsAt    DateTime     @db.Timestamptz(3)
+  endsAt      DateTime?    @db.Timestamptz(3)
+  targetMad   Int          @default(50)
+  periods     RewardPeriod[]
+  enrollments Enrollment[]
+}
+
+model RewardPeriod {
+  id           String   @id
+  campaignId   String
+  name         String
+  startsAt     DateTime @db.Timestamptz(3)
+  endsAt       DateTime @db.Timestamptz(3)
+  payoutFrom   DateTime @db.Timestamptz(3)
+  policy       Json
+  campaign     Campaign @relation(fields: [campaignId], references: [id])
+  weeks        CampaignWeek[]
+  entitlements RewardEntitlement[]
+}
+
+model CampaignWeek {
+  id          String   @id
+  periodId    String
+  number      Int
+  startsAt    DateTime @db.Timestamptz(3)
+  endsAt      DateTime @db.Timestamptz(3)
+  period      RewardPeriod @relation(fields: [periodId], references: [id])
+  submissions Submission[]
+  completions WeeklyCompletion[]
+  @@unique([periodId, number])
+}
+
+model Enrollment {
+  id         String   @id @default(cuid())
+  campaignId String
+  userId     String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+  @@unique([campaignId, userId])
+}
+
+model Repository {
+  id           String   @id @default(cuid())
+  githubRepoId BigInt   @unique
+  url          String   @unique
+  name         String
+  owner        String
+  description  String
+  direction    String
+  integration  String
+  defaultBranch String
+  isFork       Boolean @default(false)
+  isOfficial   Boolean @default(false)
+  members      ProjectMember[]
+  submissions  Submission[]
+  batchItems   EcBatchItem[]
+  registrations EcRegistration[]
+}
+
+model ProjectMember {
+  userId       String
+  repositoryId String
+  user         User       @relation(fields: [userId], references: [id])
+  repository   Repository @relation(fields: [repositoryId], references: [id])
+  @@id([userId, repositoryId])
+}
+
+model Submission {
+  id           String       @id @default(cuid())
+  userId       String
+  weekId       String
+  repositoryId String
+  status       ReviewStatus @default(SUBMITTED)
+  version      Int          @default(1)
+  submittedAt  DateTime     @default(now()) @db.Timestamptz(3)
+  user         User         @relation(fields: [userId], references: [id])
+  week         CampaignWeek @relation(fields: [weekId], references: [id])
+  repository   Repository   @relation(fields: [repositoryId], references: [id])
+  revisions    SubmissionRevision[]
+  completion   WeeklyCompletion?
+  @@unique([userId, weekId])
+  @@index([weekId, status])
+}
+
+model SubmissionRevision {
+  id           String   @id @default(cuid())
+  submissionId String
+  version      Int
+  summary      String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  submission   Submission @relation(fields: [submissionId], references: [id])
+  evidence     ContributionEvidence[]
+  reviews      SubmissionReview[]
+  @@unique([submissionId, version])
+}
+
+model ContributionEvidence {
+  id           String   @id @default(cuid())
+  revisionId   String
+  sha          String
+  githubAuthorId BigInt?
+  authoredAt   DateTime @db.Timestamptz(3)
+  committedAt  DateTime @db.Timestamptz(3)
+  observedAt   DateTime @default(now()) @db.Timestamptz(3)
+  url          String
+  snapshot     Json
+  revision     SubmissionRevision @relation(fields: [revisionId], references: [id])
+  @@unique([revisionId, sha])
+  @@index([githubAuthorId, sha])
+}
+
+model SubmissionReview {
+  id         String   @id @default(cuid())
+  revisionId String
+  reviewerId String
+  decision   ReviewStatus
+  note       String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  revision   SubmissionRevision @relation(fields: [revisionId], references: [id])
+  reviewer   User @relation(fields: [reviewerId], references: [id])
+}
+
+model EcBatch {
+  id             String   @id @default(cuid())
+  status         EcStatus @default(QUEUED)
+  branch         String   @unique
+  revision       Int      @default(1)
+  upstreamRepoId BigInt
+  prNumber       Int?
+  prUrl          String?
+  baseSha        String?
+  headSha        String?
+  migrationPath  String?
+  contentHash    String?
+  validationLog  String?
+  mergedAt       DateTime? @db.Timestamptz(3)
+  syncedAt       DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  items          EcBatchItem[]
+  @@unique([upstreamRepoId, prNumber])
+}
+
+model EcBatchItem {
+  batchId      String
+  repositoryId String
+  verifiedAt   DateTime? @db.Timestamptz(3)
+  failure      String?
+  batch        EcBatch    @relation(fields: [batchId], references: [id])
+  repository   Repository @relation(fields: [repositoryId], references: [id])
+  @@id([batchId, repositoryId])
+}
+
+model EcRegistration {
+  id           String @id @default(cuid())
+  repositoryId String
+  ecosystem    String @default("KiteAI")
+  status       RegistrationStatus @default(UNKNOWN)
+  upstreamSha  String?
+  evidenceUrl  String?
+  verifiedAt   DateTime? @db.Timestamptz(3)
+  repository   Repository @relation(fields: [repositoryId], references: [id])
+  completions  WeeklyCompletion[]
+  @@unique([repositoryId, ecosystem])
+}
+
+model WeeklyCompletion {
+  id             String @id @default(cuid())
+  userId         String
+  weekId         String
+  submissionId   String @unique
+  registrationId String
+  policyVersion  String
+  completedAt    DateTime @default(now()) @db.Timestamptz(3)
+  user           User @relation(fields: [userId], references: [id])
+  week           CampaignWeek @relation(fields: [weekId], references: [id])
+  submission     Submission @relation(fields: [submissionId], references: [id])
+  registration   EcRegistration @relation(fields: [registrationId], references: [id])
+  @@unique([userId, weekId])
+}
+
+model RewardEntitlement {
+  id          String @id @default(cuid())
+  userId      String
+  periodId    String
+  policy      Json
+  unlockedUnits BigInt @default(0)
+  paidUnits     BigInt @default(0)
+  reviewedAt    DateTime? @db.Timestamptz(3)
+  frozenReason  String?
+  user        User @relation(fields: [userId], references: [id])
+  period      RewardPeriod @relation(fields: [periodId], references: [id])
+  claims      RewardClaim[]
+  @@unique([userId, periodId])
+}
+
+model RewardClaim {
+  id             String @id @default(cuid())
+  entitlementId  String
+  idempotencyKey String @unique
+  wallet         String @db.VarChar(42)
+  chainId        Int
+  tokenAddress   String @db.VarChar(42)
+  amountUnits    BigInt
+  status         String @default("PENDING")
+  transactionHash String? @unique
+  providerRequestId String? @unique
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  entitlement    RewardEntitlement @relation(fields: [entitlementId], references: [id])
+}
+
+model Job {
+  id        String @id @default(cuid())
+  type      String
+  key       String @unique
+  payload   Json
+  status    JobStatus @default(PENDING)
+  attempts  Int @default(0)
+  maxAttempts Int @default(3)
+  runAt     DateTime @default(now()) @db.Timestamptz(3)
+  lockedUntil DateTime? @db.Timestamptz(3)
+  lockedBy  String?
+  lastError String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([status, runAt])
+}
+
+model OutboxEvent {
+  id          String @id @default(cuid())
+  key         String @unique
+  type        String
+  payload     Json
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  processedAt DateTime? @db.Timestamptz(3)
+  @@index([processedAt, createdAt])
+}
+
+model AuditLog {
+  id         String @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  @@index([entityType, entityId, createdAt])
+}

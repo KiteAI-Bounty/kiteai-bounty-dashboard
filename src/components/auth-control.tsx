@@ -1,0 +1,283 @@
+"use client";
+
+import Link from "next/link";
+import { Github, LogOut, Wallet } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+type Provider = {
+  request(input: {
+    method: string;
+    params?: unknown[] | object;
+  }): Promise<unknown>;
+  on?(event: "accountsChanged", listener: (accounts: string[]) => void): void;
+  removeListener?(
+    event: "accountsChanged",
+    listener: (accounts: string[]) => void,
+  ): void;
+};
+export type SessionUser = {
+  wallet: string;
+  role: "USER" | "ADMIN";
+  github: { login: string } | null;
+};
+type ApiEnvelope<T> = { data?: T; error?: { code: string; message: string } };
+
+declare global {
+  interface Window {
+    okxwallet?: Provider;
+    ethereum?: Provider;
+  }
+}
+
+export function AuthControl({
+  demo,
+  chain,
+  initialUser,
+}: {
+  demo: boolean;
+  initialUser: SessionUser | null;
+  chain: {
+    id: number;
+    name: string;
+    rpc: string;
+    explorer: string;
+    symbol: string;
+  };
+}) {
+  const router = useRouter();
+  const [user, setUser] = useState<SessionUser | null>(initialUser);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (demo) return;
+    fetch("/api/me", { credentials: "same-origin" })
+      .then(async (response) => {
+        if (response.ok)
+          setUser(
+            ((await response.json()) as ApiEnvelope<SessionUser>).data ?? null,
+          );
+      })
+      .catch(() => undefined);
+  }, [demo]);
+
+  useEffect(() => {
+    if (demo || !user) return;
+    const provider = window.okxwallet ?? window.ethereum;
+    if (!provider) return;
+    let active = true;
+    const checkAccount = async (accounts: string[]) => {
+      const current = accounts[0]?.toLowerCase();
+      if (!active || current === user.wallet.toLowerCase()) return;
+      setUser(null);
+      setBusy(false);
+      setMessage("");
+      router.push("/");
+      router.refresh();
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      }).catch(() => undefined);
+    };
+    const listener = (accounts: string[]) => void checkAccount(accounts);
+    provider.on?.("accountsChanged", listener);
+    provider
+      .request({ method: "eth_accounts" })
+      .then((accounts) => checkAccount(accounts as string[]))
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      provider.removeListener?.("accountsChanged", listener);
+    };
+  }, [demo, router, user]);
+
+  async function connect() {
+    const provider = window.okxwallet ?? window.ethereum;
+    if (!provider) {
+      setMessage("未检测到 OKX Wallet，请先安装或打开钱包扩展。");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      const accounts = (await provider.request({
+        method: "eth_requestAccounts",
+      })) as string[];
+      const address = accounts[0];
+      if (!address) throw new Error("钱包没有返回可用地址。");
+      const chainHex = `0x${chain.id.toString(16)}`;
+      try {
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: chainHex }],
+        });
+      } catch (error) {
+        const code =
+          typeof error === "object" && error && "code" in error
+            ? Number(error.code)
+            : 0;
+        if (code !== 4902) throw error;
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: chainHex,
+              chainName: chain.name,
+              nativeCurrency: {
+                name: chain.symbol,
+                symbol: chain.symbol,
+                decimals: 18,
+              },
+              rpcUrls: [chain.rpc],
+              blockExplorerUrls: [chain.explorer],
+            },
+          ],
+        });
+      }
+      const actualChain = Number.parseInt(
+        (await provider.request({ method: "eth_chainId" })) as string,
+        16,
+      );
+      const nonceResponse = await fetch("/api/auth/wallet/nonce", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, chainId: actualChain }),
+      });
+      const nonce = (await nonceResponse.json()) as ApiEnvelope<{
+        challengeId: string;
+        message: string;
+      }>;
+      if (!nonceResponse.ok || !nonce.data)
+        throw new Error(nonce.error?.message ?? "无法创建签名请求。");
+      const signature = (await provider.request({
+        method: "personal_sign",
+        params: [nonce.data.message, address],
+      })) as string;
+      const verifyResponse = await fetch("/api/auth/wallet/verify", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challengeId: nonce.data.challengeId,
+          address,
+          signature,
+        }),
+      });
+      const verified =
+        (await verifyResponse.json()) as ApiEnvelope<SessionUser>;
+      if (!verifyResponse.ok || !verified.data)
+        throw new Error(verified.error?.message ?? "钱包登录失败。");
+      setUser(verified.data);
+      router.push(verified.data.role === "ADMIN" ? "/admin" : "/dashboard");
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "钱包请求未完成。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function logout() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!response.ok) throw new Error("退出失败，请重试。");
+      setUser(null);
+      router.push("/");
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "退出失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (demo)
+    return (
+      <button
+        className="button dark compact"
+        disabled
+        title="将 DATA_MODE 改为 database 后可测试真实钱包登录"
+      >
+        <Wallet size={15} />
+        连接钱包 · 演示模式
+      </button>
+    );
+  return (
+    <div className="auth-control">
+      {!user && (
+        <button
+          className="button dark compact"
+          onClick={connect}
+          disabled={busy}
+        >
+          <Wallet size={15} />
+          {busy ? "等待钱包…" : "连接 OKX 钱包"}
+        </button>
+      )}
+      {user?.role === "ADMIN" && (
+        <>
+          <Link className="account-link" href="/admin">
+            Admin · {user.wallet.slice(0, 6)}…{user.wallet.slice(-4)}
+          </Link>
+          <button
+            className="icon-button logout"
+            aria-label="退出登录"
+            title="退出登录"
+            onClick={logout}
+            disabled={busy}
+          >
+            <LogOut size={15} />
+          </button>
+        </>
+      )}
+      {user?.role === "USER" && !user.github && (
+        <>
+          <a
+            className="button dark compact"
+            href="/api/auth/github?returnTo=/dashboard"
+          >
+            <Github size={15} />
+            绑定 GitHub
+          </a>
+          <button
+            className="icon-button logout"
+            aria-label="退出登录"
+            title="退出登录"
+            onClick={logout}
+            disabled={busy}
+          >
+            <LogOut size={15} />
+          </button>
+        </>
+      )}
+      {user?.role === "USER" && user.github && (
+        <>
+          <Link className="account-link" href="/dashboard">
+            @{user.github.login}
+          </Link>
+          <button
+            className="icon-button logout"
+            aria-label="退出登录"
+            title="退出登录"
+            onClick={logout}
+            disabled={busy}
+          >
+            <LogOut size={15} />
+          </button>
+        </>
+      )}
+      {message && (
+        <span className="auth-message" role="alert">
+          {message}
+        </span>
+      )}
+    </div>
+  );
+}

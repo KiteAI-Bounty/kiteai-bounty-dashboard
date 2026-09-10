@@ -1,0 +1,24 @@
+name: Framework checks
+on:
+  push:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: development
+      DATA_MODE: demo
+      KITE_NETWORK: testnet
+      EC_PROVIDER_MODE: mock
+      CLAIMS_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run db:validate
+      - run: npm run build
+      - run: npm run worker:check

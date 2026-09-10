@@ -1,0 +1,59 @@
+{
+  "name": "kiteai-bounty-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.12 <25"
+  },
+  "scripts": {
+    "postinstall": "prisma generate",
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "prisma generate && next build",
+    "start": "next start --hostname 127.0.0.1",
+    "lint": "eslint .",
+    "format": "prettier --write src prisma tests *.ts *.json *.mjs *.yaml .github/workflows/*.yml",
+    "format:check": "prettier --check src prisma tests *.ts *.json *.mjs *.yaml .github/workflows/*.yml",
+    "typecheck": "prisma generate && next typegen && tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:db": "tsx tests/database.integration.ts",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "worker": "tsx src/workers/index.ts",
+    "worker:once": "tsx src/workers/index.ts --once",
+    "worker:check": "tsx src/workers/index.ts --check"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "dotenv": "^17.2.3",
+    "lucide-react": "^0.577.0",
+    "next": "16.3.4",
+    "pg": "^8.16.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "viem": "^2.56.3",
+    "zod": "^4.3.6"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.2",
+    "mysql2": "3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@types/pg": "^8.16.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "eslint": "^9.39.0",
+    "eslint-config-next": "16.3.4",
+    "prettier": "^3.9.6",
+    "prisma": "7.10.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
