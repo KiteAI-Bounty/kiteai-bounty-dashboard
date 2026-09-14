@@ -26,6 +26,22 @@ prisma/                        schema、迁移和开发种子数据
 tests/                         业务、接口、并发和端到端验证
 ```
 
+### 1.1 AI 预审核模块（规划）
+
+AI 预审核放在 Admin 确认之前，输入参与者提交的仓库 URL、Commit 快照、选择的贡献方向、summary，以及待生成的 EC migration。模块必须先运行确定性规则，再调用模型生成解释；模型结果只作为 Admin 的审核辅助信息。
+
+确定性检查至少包括：
+
+1. GitHub 仓库公开可访问、非 Fork，Commit 作者与绑定 GitHub 身份一致。
+2. Commit 日期属于当前统计周，排除 Merge Commit、Bot、`[bot]` 和自动生成提交。
+3. 仓库未重复登记，已有 `KiteAI` 生态时只能生成 `repadd KiteAI <repo-url>`。
+4. migration 文件名和 `ecoadd`／`repadd`／`ecocon` DSL 通过 Open Dev Data 校验。
+5. 提交方向、README、依赖、代码证据与 KiteAI 关联要求一致。
+
+模型分析结果保存为不可变审计快照，字段包括规则版本、模型版本、输入摘要、逐项结论、风险等级、建议和时间。建议结果分为 `PASS_RECOMMENDED`、`CHANGES_RECOMMENDED`、`HIGH_RISK`；任何结果都不能直接改变 Submission 状态。
+
+EC 反馈闭环在 PR 同步任务中实现：记录 PR 的 `OPEN`、`MERGED`、`CLOSED_UNMERGED`、Review 评论和上游 taxonomy 复核结果，作为后续规则评估数据。关闭 PR 不能单独解释为代码不合格，可能是重复或被其他 PR 替代；因此 AI 训练／评估必须结合 PR 描述、评论和最终迁移结果。
+
 ## 2. 配置与开发环境
 
 ### 2.1 已核实的链配置

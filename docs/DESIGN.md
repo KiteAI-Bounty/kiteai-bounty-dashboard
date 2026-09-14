@@ -55,6 +55,23 @@ EC 提交流程按“用户提交仓库 → 后台审核 → Admin 确认提交 
 
 EC 拒绝、要求修改或延迟属于外部结果。系统保留“等待 EC”“需要修改”“已关闭未合并”等状态，不伪造完成，不阻断下一周提交；只有真实合并并逐项核实后，才回填原统计周并进入奖励资格重算。
 
+### 2.1.2 AI 预审核与 EC 兼容性检查
+
+AI 只作为提交前的预审核助手，不能代替 Admin 审核，也不能代表 Electric Capital 作出合并或统计决定。它根据 Open Dev Data 的公开 DSL、历史 PR 和 Developer Report 的公开方法，对以下项目给出建议：
+
+| 检查项 | AI 需要判断的内容 |
+|---|---|
+| 仓库适合性 | 仓库是否公开、可访问、非 Fork，是否与所选 KiteAI 方向匹配 |
+| migration 格式 | 文件名、`ecoadd`／`repadd`／`ecocon` 语法，以及是否重复创建已有生态 |
+| 重复风险 | 仓库是否已在 KiteAI 或其他生态中登记，是否可能被已有 PR 覆盖 |
+| KiteAI 关联证据 | README、依赖、代码、合约调用、官方 SDK／Passport／x402／A2A 集成是否清晰 |
+| Commit 风险 | 作者身份、统计周日期、Merge Commit、Bot、`[bot]`、Fork 历史和复制代码风险 |
+| PR 描述 | 是否说明仓库用途、生态关联、来源、批量提交依据和验证证据 |
+
+AI 输出固定为“建议通过”“建议修改”或“高风险”，并附逐项理由和缺少的证据。Admin 必须能够查看原始 Commit、代码差异和 AI 检查依据后作最终决定。AI 不得自动批准、自动把提交标记为完成或自动开放奖励领取。
+
+EC PR 合并后，系统仍以 GitHub 的真实 `merged` 状态和上游 taxonomy 复核为准。Open Dev Data 录入的是生态与仓库的关联；Developer Report 还会继续抓取 Commit、指纹、作者和依赖，并过滤 Fork、复制代码、Bot 和重复身份，因此 AI 预审核只能降低提交风险，不能保证进入榜单或成为 Full-time developer。
+
 ### 2.2 Web3Insight
 
 作为独立的外部观察数据源，提供生态、仓库与开发者查询。官网存在 API 和 MCP 入口。其返回值不能直接标成 EC 官方统计，数据刷新也不能代替 EC 合并证据。[Web3Insight 官网](https://web3insight.ai/)、[API 文档](https://api.web3insight.ai/doc/api)
