@@ -124,6 +124,15 @@ export function ProcessGuide({
               the payment flow with tests.</em>
             </span>
           </li>
+          <li className="process-commit-guide">
+            <strong>Commit 编写示例</strong>
+            <code>feat: add KiteAI x402 payment service</code>
+            <pre>{`Added an HTTP wrapper that returns 402 for unpaid requests
+and settles payment only after the upstream API succeeds.
+
+Integrated the KiteAI network and added tests for the payment flow.`}</pre>
+            <span>提交前请确认：做了什么、与 KiteAI 的关联、原创身份、测试或部署证据、统计周时间，以及 Commit 作者不是 Bot、Merge Commit 或 Fork 历史作者。</span>
+          </li>
           <li>
             可使用 AI 工具辅助开发，但须使用本人 GitHub 身份提交并对代码负责。
           </li>

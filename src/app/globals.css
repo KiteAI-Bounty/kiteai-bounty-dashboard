@@ -1087,6 +1087,11 @@ tbody tr:hover {
 .process-example-item a:hover { text-decoration: underline; }
 .process-example-item span { color: #66746b; font-size: 13px; line-height: 1.55; }
 .process-example-item em { color: #344139; }
+.process-commit-guide { display: grid; gap: 7px; }
+.process-commit-guide strong { color: #344139; }
+.process-commit-guide code, .process-commit-guide pre { width: fit-content; max-width: 100%; overflow-x: auto; border-radius: 6px; background: #f3f6f2; padding: 6px 8px; color: #216e52; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+.process-commit-guide pre { margin: 0; color: #53635a; }
+.process-commit-guide span { color: #66746b; font-size: 13px; line-height: 1.6; }
 @media (max-width: 700px) { .direction-content { grid-template-columns: 1fr; padding-left: 22px; } .direction-risk { grid-column: auto; } }
 .inline-form {
   display: flex;
