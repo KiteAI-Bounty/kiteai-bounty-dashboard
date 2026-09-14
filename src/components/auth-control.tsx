@@ -49,6 +49,7 @@ export function AuthControl({
   const [user, setUser] = useState<SessionUser | null>(initialUser);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
 
   useEffect(() => {
     if (demo) return;
@@ -216,13 +217,18 @@ export function AuthControl({
   return (
     <div className="auth-control">
       {!user && (
-        <div className="wallet-connect-options">
-          <button className="button dark compact" onClick={() => connect("okx")} disabled={busy}>
-            <Wallet size={15} />{busy ? "等待钱包…" : "连接 OKX Wallet"}
+        <div className="wallet-connect-picker">
+          <button className="button dark compact" onClick={() => setWalletMenuOpen((open) => !open)} disabled={busy}>
+            <Wallet size={15} />{busy ? "等待钱包…" : "连接钱包"}
           </button>
-          <button className="button compact" onClick={() => connect("metamask")} disabled={busy}>
-            <Wallet size={15} />{busy ? "等待钱包…" : "连接 MetaMask"}
-          </button>
+          {walletMenuOpen && <div className="wallet-connect-menu" role="menu">
+            <button className="wallet-connect-choice" onClick={() => { setWalletMenuOpen(false); void connect("okx"); }} role="menuitem" disabled={busy}>
+              <Wallet size={15} /><span><strong>OKX Wallet</strong><small>使用 OKX 钱包连接</small></span>
+            </button>
+            <button className="wallet-connect-choice" onClick={() => { setWalletMenuOpen(false); void connect("metamask"); }} role="menuitem" disabled={busy}>
+              <Wallet size={15} /><span><strong>MetaMask</strong><small>使用 MetaMask 连接</small></span>
+            </button>
+          </div>}
         </div>
       )}
       {user?.role === "ADMIN" && (

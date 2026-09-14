@@ -1335,8 +1335,12 @@ tbody tr:hover {
 .table-pagination > div { display: flex; gap: 6px; }
 .admin-wallet-list { display: grid; gap: 8px; margin-top: 16px; }
 .admin-wallet-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line, #dfe7df); padding-top: 10px; font-size: 12px; }
-.wallet-connect-options { display: flex; align-items: center; gap: 6px; }
-@media (max-width: 600px) { .wallet-connect-options { flex-direction: column; align-items: stretch; } }
+.wallet-connect-picker { position: relative; }
+.wallet-connect-menu { position: absolute; z-index: 20; top: calc(100% + 8px); right: 0; width: 220px; padding: 6px; border: 1px solid var(--line, #dfe7df); border-radius: 12px; background: #fff; box-shadow: 0 12px 30px rgba(26, 45, 34, .14); }
+.wallet-connect-choice { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-radius: 8px; background: transparent; padding: 10px; color: #344139; text-align: left; cursor: pointer; }
+.wallet-connect-choice:hover { background: #f3f6f2; }
+.wallet-connect-choice span { display: grid; gap: 2px; }
+.wallet-connect-choice small { color: #87948a; font-size: 11px; }
 .button.danger {
   color: #a34a45;
   border-color: #e6c4c1;
