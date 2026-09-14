@@ -1333,6 +1333,8 @@ tbody tr:hover {
 .review-pagination > div { display: flex; gap: 6px; }
 .table-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0 0; color: #8a968d; font-size: 11px; }
 .table-pagination > div { display: flex; gap: 6px; }
+.admin-wallet-list { display: grid; gap: 8px; margin-top: 16px; }
+.admin-wallet-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line, #dfe7df); padding-top: 10px; font-size: 12px; }
 .button.danger {
   color: #a34a45;
   border-color: #e6c4c1;
