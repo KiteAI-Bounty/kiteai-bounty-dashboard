@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { directionLabel } from "@/modules/directions/catalog";
 
 type ReviewItem = {
   id: string;
@@ -13,6 +14,7 @@ type ReviewItem = {
   user: { wallet: string; github: { login: string } | null };
   week: { number: number; startsAt: string; endsAt: string };
   repository: { owner: string; name: string; url: string };
+  direction: string;
   revision: {
     id: string;
     version: number;
@@ -152,7 +154,7 @@ export function AdminReviewQueue({ items }: { items: ReviewItem[] }) {
             >
               {item.repository.owner}/{item.repository.name}
             </a><span className="review-commit">{item.revision.evidence.map((e) => e.sha.slice(0, 8)).join(", ")}</span></div>
-            <span className="review-week">第 {item.week.number} 周</span>
+            <div className="review-week"><span>第 {item.week.number} 周</span><small>{directionLabel(item.direction)}</small></div>
             <div className="review-status-cell"><span className={`badge ${statusTone[item.status] ?? "muted"}`}>{statusLabel[item.status] ?? item.status}</span>{ecLabel(item) && <span className={`badge ${item.ecStatus === "VALIDATION_FAILED" ? "red" : item.ecStatus === "MERGED" ? "green" : "yellow"}`}>{ecLabel(item)}</span>}{item.ecPrUrl && <a href={item.ecPrUrl} target="_blank" rel="noreferrer" className="text-link review-pr-link">查看 PR</a>}{item.ecFailure && <small title={item.ecFailure}>{item.ecFailure}</small>}</div>
             {(item.status === "SUBMITTED" || item.status === "CHANGES_REQUESTED") && <div className="review-actions">
               <button

@@ -223,6 +223,7 @@ model Submission {
   userId       String
   weekId       String
   repositoryId String
+  direction    String @default("x402-service")
   status       ReviewStatus @default(SUBMITTED)
   version      Int          @default(1)
   submittedAt  DateTime     @default(now()) @db.Timestamptz(3)

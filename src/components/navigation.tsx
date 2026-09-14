@@ -11,6 +11,7 @@ const links = [
   { href: "/", label: "活动总览" },
   { href: "/dashboard", label: "我的看板" },
   { href: "/submissions/current", label: "项目与贡献" },
+  { href: "/directions", label: "贡献方向" },
   { href: "/rewards", label: "奖励进度" },
   { href: "/admin", label: "管理后台" },
 ];

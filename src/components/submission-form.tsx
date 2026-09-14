@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { contributionDirections } from "@/modules/directions/catalog";
 
 export function SubmissionForm({ disabled = false, initialStatus = null }: { disabled?: boolean; initialStatus?: string | null }) {
   const router = useRouter();
   const [links, setLinks] = useState("");
   const [summary, setSummary] = useState("");
+  const [direction, setDirection] = useState<string>(contributionDirections[0].value);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(initialStatus);
@@ -25,6 +27,7 @@ export function SubmissionForm({ disabled = false, initialStatus = null }: { dis
             .map((item) => item.trim())
             .filter(Boolean),
           summary,
+          direction,
         }),
       });
       const result = await response.json();
@@ -46,6 +49,24 @@ export function SubmissionForm({ disabled = false, initialStatus = null }: { dis
 
   return (
     <form onSubmit={submit}>
+      <label>
+        项目方向
+        <select
+          value={direction}
+          onChange={(event) => setDirection(event.target.value)}
+          required
+          disabled={disabled || busy}
+        >
+          {contributionDirections.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+        <small className="field-help">
+          {contributionDirections.find((item) => item.value === direction)?.description}
+        </small>
+      </label>
       <label>
         本周 Commit 链接
         <textarea

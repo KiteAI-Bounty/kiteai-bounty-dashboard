@@ -126,6 +126,7 @@ export default async function Admin() {
                       name: item.repository.name,
                       url: item.repository.url,
                     },
+                    direction: item.direction,
                     revision: {
                       id: revision.id,
                       version: revision.version,

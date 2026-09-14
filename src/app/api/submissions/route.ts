@@ -4,10 +4,12 @@ import { getDb } from "@/lib/db";
 import { getCampaignWorkspace } from "@/modules/campaigns/service";
 import { currentWeek } from "@/modules/campaigns/domain";
 import { z } from "zod";
+import { contributionDirections } from "@/modules/directions/catalog";
 
 const input = z.object({
   evidenceUrls: z.array(z.url()).min(1).max(20),
   summary: z.string().trim().min(20).max(4000),
+  direction: z.enum(contributionDirections.map((item) => item.value) as [string, ...string[]]).default("x402-service"),
 });
 type GithubCommitData = {
   author?: { id?: number | string; login?: string; type?: string };
@@ -175,6 +177,7 @@ export async function POST(request: Request) {
           userId: user.userId,
           weekId: week.id,
           repositoryId: repository.id,
+          direction: body.direction,
           revisions: {
             create: {
               version: 1,
