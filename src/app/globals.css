@@ -1320,6 +1320,8 @@ tbody tr:hover {
 .review-empty { padding: 34px 14px; border: 1px dashed var(--line); border-radius: 8px; color: #8a968d; text-align: center; font-size: 12px; }
 .review-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 25px 0; color: #8a968d; font-size: 11px; }
 .review-pagination > div { display: flex; gap: 6px; }
+.table-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0 0; color: #8a968d; font-size: 11px; }
+.table-pagination > div { display: flex; gap: 6px; }
 .button.danger {
   color: #a34a45;
   border-color: #e6c4c1;

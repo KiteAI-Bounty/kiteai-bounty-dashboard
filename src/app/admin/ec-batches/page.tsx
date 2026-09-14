@@ -3,6 +3,7 @@ import { DemoNote, LockedPage, PageTitle } from "@/components/ui";
 import { readEnvironment } from "@/config/env";
 import { getCurrentUser } from "@/modules/auth/service";
 import { getDb } from "@/lib/db";
+import { EcBatchList } from "@/components/ec-batch-list";
 
 export default async function Batches() {
   const demo = readEnvironment(process.env).DATA_MODE === "demo";
@@ -31,56 +32,7 @@ export default async function Batches() {
             <GitPullRequest size={24} />
           </div>
           {batches.length ? (
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>仓库</th>
-                    <th>状态</th>
-                    <th>PR</th>
-                    <th>创建时间</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {batches.map((batch) => (
-                    <tr key={batch.id}>
-                      <td>
-                        {batch.items.map((item) => (
-                          <div key={item.repositoryId}>
-                            {item.repository.owner}/{item.repository.name}
-                          </div>
-                        ))}
-                      </td>
-                      <td>
-                        <span className="badge muted">
-                          <span className="badge-dot" />
-                          {batch.status}
-                        </span>
-                      </td>
-                      <td>
-                        {batch.prUrl ? (
-                          <a
-                            className="text-link"
-                            href={batch.prUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            #{batch.prNumber}
-                          </a>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td>
-                        {batch.createdAt.toLocaleString("zh-CN", {
-                          timeZone: "Asia/Shanghai",
-                        })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <EcBatchList batches={batches.map((batch) => ({ ...batch, createdAt: batch.createdAt.toISOString() }))} />
           ) : (
             <div className="empty-state">
               <CircleDashed size={34} />

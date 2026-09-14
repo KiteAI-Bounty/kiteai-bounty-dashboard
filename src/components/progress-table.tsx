@@ -19,6 +19,7 @@ export function ProgressTable({
   const [query, setQuery] = useState("");
   const [month, setMonth] = useState("all");
   const [onlyCompleted, setOnlyCompleted] = useState(false);
+  const [page, setPage] = useState(1);
   const [copied, setCopied] = useState<string | null>(null);
   const [copyError, setCopyError] = useState("");
   const months = [
@@ -53,6 +54,9 @@ export function ProgressTable({
             w.status === "completed",
         )),
   );
+  const pageSize = 20;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const visibleRows = filtered.slice((page - 1) * pageSize, page * pageSize);
   async function copy(wallet: string) {
     try {
       await navigator.clipboard.writeText(wallet);
@@ -74,7 +78,7 @@ export function ProgressTable({
         <select
           aria-label="筛选统计月份"
           value={month}
-          onChange={(e) => setMonth(e.target.value)}
+          onChange={(e) => { setMonth(e.target.value); setPage(1); }}
         >
           <option value="all">首期全部周次</option>
           {months.map((m) => (
@@ -91,13 +95,13 @@ export function ProgressTable({
             aria-label="搜索钱包地址"
             placeholder="搜索钱包地址…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => { setQuery(e.target.value); setPage(1); }}
           />
         </label>
         <button
           className={`button small ${onlyCompleted ? "selected" : ""}`}
           aria-pressed={onlyCompleted}
-          onClick={() => setOnlyCompleted(!onlyCompleted)}
+          onClick={() => { setOnlyCompleted(!onlyCompleted); setPage(1); }}
         >
           <SlidersHorizontal size={14} />
           仅看已完成
@@ -118,7 +122,7 @@ export function ProgressTable({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((row, i) => (
+            {visibleRows.map((row, i) => (
               <tr key={row.wallet}>
                 <td>
                   <div className="wallet-cell">
@@ -171,6 +175,7 @@ export function ProgressTable({
       {filtered.length === 0 && (
         <div className="empty-table">没有符合条件的参与者</div>
       )}
+      {filtered.length > pageSize && <div className="table-pagination"><span>第 {page} / {pageCount} 页，共 {filtered.length} 条</span><div><button className="button small" disabled={page === 1} onClick={() => setPage((value) => value - 1)}>上一页</button><button className="button small" disabled={page === pageCount} onClick={() => setPage((value) => value + 1)}>下一页</button></div></div>}
       <div className="table-footer">
         <span>显示 {filtered.length} 位开发者 · 北京时间（UTC+8）</span>
         <span role="status">

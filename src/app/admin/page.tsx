@@ -15,6 +15,7 @@ import { getDb } from "@/lib/db";
 import { ParticipantImport } from "@/components/participant-import";
 import { AdminReviewQueue } from "@/components/admin-review-queue";
 import { AdminWallets } from "@/components/admin-wallets";
+import { ParticipantList } from "@/components/participant-list";
 
 export default async function Admin() {
   if (readEnvironment(process.env).DATA_MODE !== "demo") {
@@ -149,6 +150,8 @@ export default async function Admin() {
                 <p>联系方式仅在管理员页面显示。</p>
               </div>
             </div>
+            <ParticipantList participants={participants} />
+            {/*
             <div className="table-scroll">
               <table>
                 <thead>
@@ -191,7 +194,7 @@ export default async function Admin() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div> */}
           </section>
         )}
       </>
