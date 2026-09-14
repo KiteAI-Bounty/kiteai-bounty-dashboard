@@ -112,10 +112,16 @@ export function ProcessGuide({
           </li>
           <li className="process-example-item">
             <strong>提交示例</strong>
-            <code>https://github.com/owner/repository/commit/abc1234</code>
+            <a
+              href="https://github.com/Anyi-zheng/kiteai-passport-layerzero/commit/f4c36d03893edebed393f58f02cb375cfc0f75ff"
+              target="_blank"
+              rel="noreferrer"
+            >
+              https://github.com/Anyi-zheng/kiteai-passport-layerzero/commit/f4c36d0
+            </a>
             <span>
-              完成说明：<em>Added KiteAI SDK integration and covered the payment
-              flow with tests.</em>
+              仅作格式示例。完成说明：<em>Added KiteAI SDK integration and covered
+              the payment flow with tests.</em>
             </span>
           </li>
           <li>
