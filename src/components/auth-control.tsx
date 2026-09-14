@@ -15,6 +15,8 @@ type Provider = {
     event: "accountsChanged",
     listener: (accounts: string[]) => void,
   ): void;
+  isMetaMask?: boolean;
+  isPhantom?: boolean;
 };
 export type SessionUser = {
   wallet: string;
@@ -27,7 +29,25 @@ declare global {
   interface Window {
     okxwallet?: Provider;
     ethereum?: Provider;
+    phantom?: { ethereum?: Provider };
   }
+}
+
+function getInjectedProviders() {
+  const ethereum = window.ethereum as (Provider & { providers?: Provider[] }) | undefined;
+  return [
+    ...(ethereum?.providers ?? []),
+    window.okxwallet,
+    window.phantom?.ethereum,
+    ethereum,
+  ].filter((provider, index, all): provider is Provider => Boolean(provider) && all.indexOf(provider) === index);
+}
+
+function getProvider(kind: "okx" | "metamask" | "phantom") {
+  const providers = getInjectedProviders();
+  if (kind === "okx") return window.okxwallet;
+  if (kind === "phantom") return window.phantom?.ethereum ?? providers.find((provider) => provider.isPhantom);
+  return providers.find((provider) => provider.isMetaMask && !provider.isPhantom) ?? window.ethereum;
 }
 
 export function AuthControl({
@@ -65,9 +85,7 @@ export function AuthControl({
 
   useEffect(() => {
     if (demo || !user) return;
-    const providers = [window.okxwallet, window.ethereum].filter(
-      (provider, index, all): provider is Provider => Boolean(provider) && all.indexOf(provider) === index,
-    );
+    const providers = getInjectedProviders();
     if (!providers.length) return;
     let active = true;
     const checkAccount = async (accounts: string[]) => {
@@ -97,10 +115,10 @@ export function AuthControl({
     };
   }, [demo, router, user]);
 
-  async function connect(kind: "okx" | "metamask") {
-    const provider = kind === "okx" ? window.okxwallet : window.ethereum;
+  async function connect(kind: "okx" | "metamask" | "phantom") {
+    const provider = getProvider(kind);
     if (!provider) {
-      setMessage(kind === "okx" ? "未检测到 OKX Wallet，请先安装或打开钱包扩展。" : "未检测到 MetaMask，请先安装或打开钱包扩展。");
+      setMessage(kind === "okx" ? "未检测到 OKX Wallet，请先安装或打开钱包扩展。" : kind === "phantom" ? "未检测到 Phantom，请先安装或打开钱包扩展。" : "未检测到 MetaMask，请先安装或打开钱包扩展。");
       return;
     }
     setBusy(true);
@@ -227,6 +245,9 @@ export function AuthControl({
             </button>
             <button className="wallet-connect-choice" onClick={() => { setWalletMenuOpen(false); void connect("metamask"); }} role="menuitem" disabled={busy}>
               <Wallet size={15} /><span><strong>MetaMask</strong><small>使用 MetaMask 连接</small></span>
+            </button>
+            <button className="wallet-connect-choice" onClick={() => { setWalletMenuOpen(false); void connect("phantom"); }} role="menuitem" disabled={busy}>
+              <Wallet size={15} /><span><strong>Phantom</strong><small>使用 Phantom 连接</small></span>
             </button>
           </div>}
         </div>
