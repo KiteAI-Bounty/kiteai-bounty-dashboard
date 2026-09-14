@@ -156,6 +156,11 @@ export async function POST(request: Request) {
       },
     });
     const created = await getDb().$transaction(async (tx) => {
+      await tx.enrollment.upsert({
+        where: { campaignId_userId: { campaignId: campaign.id, userId: user.userId } },
+        update: {},
+        create: { campaignId: campaign.id, userId: user.userId },
+      });
       const existing = await tx.submission.findUnique({
         where: { userId_weekId: { userId: user.userId, weekId: week.id } },
       });
