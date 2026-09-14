@@ -92,9 +92,9 @@ export function SubmissionForm({ disabled = false, initialStatus = null }: { dis
         />
       </label>
       {message && <p className="form-message">{message}</p>}
-      {status && <p className="submission-status">当前状态：{status === "SUBMITTED" ? "待审核" : status === "CHANGES_REQUESTED" ? "要求修改" : status === "APPROVED" ? "已通过，等待 EC" : status === "REJECTED" ? "已拒绝" : status}</p>}
+      {status && <p className="submission-status">当前状态：{status === "SUBMITTED" ? "待审核" : status === "CHANGES_REQUESTED" ? "要求修改，可重新提交" : status === "APPROVED" ? "已通过，等待 EC" : status === "REJECTED" ? "已拒绝" : status}</p>}
       <button className="button dark" type="submit" disabled={disabled || busy}>
-        {busy ? "提交中…" : "提交本周贡献"}
+        {busy ? "提交中…" : status === "CHANGES_REQUESTED" ? "提交修改版本" : "提交本周贡献"}
       </button>
     </form>
   );

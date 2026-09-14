@@ -166,42 +166,55 @@ export async function POST(request: Request) {
       const existing = await tx.submission.findUnique({
         where: { userId_weekId: { userId: user.userId, weekId: week.id } },
       });
-      if (existing)
+      if (existing && existing.status !== "CHANGES_REQUESTED")
         throw new ApiError(
           "WEEK_ALREADY_SUBMITTED",
           "本周已经提交过贡献。",
           409,
         );
+      const version = (existing?.version ?? 0) + 1;
+      const revision = {
+        version,
+        summary: body.summary,
+        evidence: {
+          create: evidence.map(({ commit, data }) => ({
+            sha: commit.sha,
+            githubAuthorId: BigInt(user.github!.id),
+            authoredAt: new Date(
+              data.commit?.author?.date ??
+                data.commit?.committer?.date ??
+                new Date().toISOString(),
+            ),
+            committedAt: new Date(
+              data.commit?.committer?.date ??
+                data.commit?.author?.date ??
+                new Date().toISOString(),
+            ),
+            url: `https://github.com/${commit.owner}/${commit.repo}/commit/${commit.sha}`,
+            snapshot: data,
+          })),
+        },
+      };
+      if (existing)
+        return tx.submission.update({
+          where: { id: existing.id },
+          data: {
+            status: "SUBMITTED",
+            version,
+            submittedAt: new Date(),
+            repositoryId: repository.id,
+            direction: body.direction,
+            revisions: { create: revision },
+          },
+          select: { id: true, status: true, submittedAt: true },
+        });
       return tx.submission.create({
         data: {
           userId: user.userId,
           weekId: week.id,
           repositoryId: repository.id,
           direction: body.direction,
-          revisions: {
-            create: {
-              version: 1,
-              summary: body.summary,
-              evidence: {
-                create: evidence.map(({ commit, data }) => ({
-                  sha: commit.sha,
-                  githubAuthorId: BigInt(user.github!.id),
-                  authoredAt: new Date(
-                    data.commit?.author?.date ??
-                      data.commit?.committer?.date ??
-                      new Date().toISOString(),
-                  ),
-                  committedAt: new Date(
-                    data.commit?.committer?.date ??
-                      data.commit?.author?.date ??
-                      new Date().toISOString(),
-                  ),
-                  url: `https://github.com/${commit.owner}/${commit.repo}/commit/${commit.sha}`,
-                  snapshot: data,
-                })),
-              },
-            },
-          },
+          revisions: { create: revision },
         },
         select: { id: true, status: true, submittedAt: true },
       });
