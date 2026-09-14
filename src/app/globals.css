@@ -1081,6 +1081,11 @@ tbody tr:hover {
 .direction-links a { display: inline-flex; align-items: center; gap: 4px; color: #216e52; font-size: 14px; text-decoration: none; }
 .direction-links a:hover { text-decoration: underline; }
 .direction-risk { grid-column: 1 / -1; border-top: 1px solid var(--line, #dfe7df); padding-top: 16px; }
+.process-example-item { display: grid; gap: 5px; }
+.process-example-item strong { color: #344139; }
+.process-example-item code { width: fit-content; max-width: 100%; overflow-wrap: anywhere; border-radius: 6px; background: #f3f6f2; padding: 4px 7px; color: #216e52; font-size: 12px; }
+.process-example-item span { color: #66746b; font-size: 13px; line-height: 1.55; }
+.process-example-item em { color: #344139; }
 @media (max-width: 700px) { .direction-content { grid-template-columns: 1fr; padding-left: 22px; } .direction-risk { grid-column: auto; } }
 .inline-form {
   display: flex;

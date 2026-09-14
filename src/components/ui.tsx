@@ -110,6 +110,14 @@ export function ProcessGuide({
           <li>
             请提供公开 GitHub 仓库，以及能定位到本周 Commit 或 PR 的证据。
           </li>
+          <li className="process-example-item">
+            <strong>提交示例</strong>
+            <code>https://github.com/owner/repository/commit/abc1234</code>
+            <span>
+              完成说明：<em>Added KiteAI SDK integration and covered the payment
+              flow with tests.</em>
+            </span>
+          </li>
           <li>
             可使用 AI 工具辅助开发，但须使用本人 GitHub 身份提交并对代码负责。
           </li>
