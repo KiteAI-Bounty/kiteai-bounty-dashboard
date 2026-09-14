@@ -101,17 +101,25 @@ export function AuthControl({
         credentials: "same-origin",
       }).catch(() => undefined);
     };
-    const listener = (accounts: string[]) => void checkAccount(accounts);
+    const listeners: Array<{ provider: Provider; listener: (accounts: string[]) => void }> = [];
     for (const provider of providers) {
-      provider.on?.("accountsChanged", listener);
       provider
         .request({ method: "eth_accounts" })
-        .then((accounts) => checkAccount(accounts as string[]))
+        .then((accounts) => {
+          const currentAccounts = accounts as string[];
+          // Only monitor the extension that owns the logged-in address. Other
+          // installed wallets may have a different active account.
+          if (currentAccounts.some((account) => account.toLowerCase() === user.wallet.toLowerCase())) {
+            const listener = (nextAccounts: string[]) => void checkAccount(nextAccounts);
+            listeners.push({ provider, listener });
+            provider.on?.("accountsChanged", listener);
+          }
+        })
         .catch(() => undefined);
     }
     return () => {
       active = false;
-      for (const provider of providers) provider.removeListener?.("accountsChanged", listener);
+      for (const { provider, listener } of listeners) provider.removeListener?.("accountsChanged", listener);
     };
   }, [demo, router, user]);
 
