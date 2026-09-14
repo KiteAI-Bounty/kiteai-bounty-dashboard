@@ -64,8 +64,10 @@ export function AuthControl({
 
   useEffect(() => {
     if (demo || !user) return;
-    const provider = window.okxwallet ?? window.ethereum;
-    if (!provider) return;
+    const providers = [window.okxwallet, window.ethereum].filter(
+      (provider, index, all): provider is Provider => Boolean(provider) && all.indexOf(provider) === index,
+    );
+    if (!providers.length) return;
     let active = true;
     const checkAccount = async (accounts: string[]) => {
       const current = accounts[0]?.toLowerCase();
@@ -81,21 +83,23 @@ export function AuthControl({
       }).catch(() => undefined);
     };
     const listener = (accounts: string[]) => void checkAccount(accounts);
-    provider.on?.("accountsChanged", listener);
-    provider
-      .request({ method: "eth_accounts" })
-      .then((accounts) => checkAccount(accounts as string[]))
-      .catch(() => undefined);
+    for (const provider of providers) {
+      provider.on?.("accountsChanged", listener);
+      provider
+        .request({ method: "eth_accounts" })
+        .then((accounts) => checkAccount(accounts as string[]))
+        .catch(() => undefined);
+    }
     return () => {
       active = false;
-      provider.removeListener?.("accountsChanged", listener);
+      for (const provider of providers) provider.removeListener?.("accountsChanged", listener);
     };
   }, [demo, router, user]);
 
-  async function connect() {
-    const provider = window.okxwallet ?? window.ethereum;
+  async function connect(kind: "okx" | "metamask") {
+    const provider = kind === "okx" ? window.okxwallet : window.ethereum;
     if (!provider) {
-      setMessage("未检测到 OKX Wallet，请先安装或打开钱包扩展。");
+      setMessage(kind === "okx" ? "未检测到 OKX Wallet，请先安装或打开钱包扩展。" : "未检测到 MetaMask，请先安装或打开钱包扩展。");
       return;
     }
     setBusy(true);
@@ -212,14 +216,14 @@ export function AuthControl({
   return (
     <div className="auth-control">
       {!user && (
-        <button
-          className="button dark compact"
-          onClick={connect}
-          disabled={busy}
-        >
-          <Wallet size={15} />
-          {busy ? "等待钱包…" : "连接 OKX 钱包"}
-        </button>
+        <div className="wallet-connect-options">
+          <button className="button dark compact" onClick={() => connect("okx")} disabled={busy}>
+            <Wallet size={15} />{busy ? "等待钱包…" : "连接 OKX Wallet"}
+          </button>
+          <button className="button compact" onClick={() => connect("metamask")} disabled={busy}>
+            <Wallet size={15} />{busy ? "等待钱包…" : "连接 MetaMask"}
+          </button>
+        </div>
       )}
       {user?.role === "ADMIN" && (
         <>

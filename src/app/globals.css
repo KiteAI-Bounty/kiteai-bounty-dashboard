@@ -1335,6 +1335,8 @@ tbody tr:hover {
 .table-pagination > div { display: flex; gap: 6px; }
 .admin-wallet-list { display: grid; gap: 8px; margin-top: 16px; }
 .admin-wallet-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line, #dfe7df); padding-top: 10px; font-size: 12px; }
+.wallet-connect-options { display: flex; align-items: center; gap: 6px; }
+@media (max-width: 600px) { .wallet-connect-options { flex-direction: column; align-items: stretch; } }
 .button.danger {
   color: #a34a45;
   border-color: #e6c4c1;
