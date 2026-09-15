@@ -102,7 +102,11 @@ export function AuthControl({
 
   useEffect(() => {
     if (demo || !user) return;
-    const providers = getInjectedProviders();
+    const savedKind = window.localStorage.getItem(WALLET_KIND_KEY) as WalletKind | null;
+    // Bind account-change handling to the provider selected at login. Listening
+    // to every injected provider lets another extension log the user out.
+    const selectedProvider = savedKind ? getProvider(savedKind) : undefined;
+    const providers = selectedProvider ? [selectedProvider] : [];
     if (!providers.length) return;
     let active = true;
     const checkAccount = async (accounts: string[]) => {
