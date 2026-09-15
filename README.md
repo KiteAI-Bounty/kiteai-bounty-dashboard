@@ -1,6 +1,6 @@
 # KiteAI 开源 Bounty 看板
 
-> 工程框架已搭建。运行方法见 [开发指南](docs/DEVELOPMENT.md)，产品与架构见 [设计文档](docs/DESIGN.md)，接口与阶段规划见 [实现文档](docs/IMPLEMENTATION.md)。下文为原始 V0.1 需求，后续对齐以设计文档中已确认规则为准。
+> 工程框架已搭建。运行方法见 [开发指南](docs/DEVELOPMENT.md)，产品与架构见 [设计文档](docs/DESIGN.md)，接口与阶段规划见 [实现文档](docs/IMPLEMENTATION.md)，EC 计入标准见 [Electric Capital 活跃开发者规则](docs/EC_ACTIVE_DEVELOPER_RULES.md)。下文为原始 V0.1 需求，后续对齐以设计文档中已确认规则为准。
 
 本地启动（Node.js 22.12+）：
 

@@ -30,6 +30,8 @@ tests/                         业务、接口、并发和端到端验证
 
 AI 预审核放在 Admin 确认之前，输入参与者提交的仓库 URL、Commit 快照、选择的贡献方向、summary，以及待生成的 EC migration。模块必须先运行确定性规则，再调用模型生成解释；模型结果只作为 Admin 的审核辅助信息。
 
+处理流程按仓库登记状态分流：首次提交尚未归入 KiteAI 的仓库时，GLM 分析仓库内容、KiteAI 关联和 EC 兼容性，并据真实代码生成 PR 描述草稿；仓库已登记后，后续周次只分析新 Commit 的作者、时间、原创性、代码变化和 KiteAI 关联，不生成 migration，也不重复创建 EC PR。完整规则见 [EC 活跃开发者计入规则](EC_ACTIVE_DEVELOPER_RULES.md)。
+
 确定性检查至少包括：
 
 1. GitHub 仓库公开可访问、非 Fork，Commit 作者与绑定 GitHub 身份一致。
