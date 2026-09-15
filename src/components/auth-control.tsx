@@ -202,8 +202,12 @@ export function AuthControl({
         challengeId: string;
         message: string;
       }>;
-      if (!nonceResponse.ok || !nonce.data)
-        throw new Error(nonce.error?.message ?? "无法创建签名请求。");
+      if (!nonceResponse.ok || !nonce.data) {
+        const detail = nonce.error?.code === "INVITE_REQUIRED"
+          ? `${nonce.error.message} 当前检测到的钱包地址：${address}`
+          : nonce.error?.message;
+        throw new Error(detail ?? "无法创建签名请求。");
+      }
       const signature = (await provider.request({
         method: "personal_sign",
         params: [nonce.data.message, address],
