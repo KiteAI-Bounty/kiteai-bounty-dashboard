@@ -17,6 +17,9 @@ type Provider = {
   ): void;
   isMetaMask?: boolean;
   isPhantom?: boolean;
+  isOkxWallet?: boolean;
+  isOKExWallet?: boolean;
+  isBinance?: boolean;
 };
 export type SessionUser = {
   wallet: string;
@@ -50,9 +53,18 @@ function getInjectedProviders() {
 function getProvider(kind: WalletKind) {
   const providers = getInjectedProviders();
   if (kind === "okx") return window.okxwallet;
-  if (kind === "binance") return window.binanceWallet ?? providers.find((provider) => (provider as Provider & { isBinance?: boolean }).isBinance);
+  if (kind === "binance") return window.binanceWallet ?? providers.find((provider) => provider.isBinance);
   if (kind === "phantom") return window.phantom?.ethereum ?? providers.find((provider) => provider.isPhantom);
-  return providers.find((provider) => provider.isMetaMask && !provider.isPhantom);
+  // Several wallets expose `isMetaMask` for compatibility. Check their own
+  // identity flags first so OKX/Phantom/Binance cannot be selected as MetaMask.
+  return providers.find(
+    (provider) =>
+      provider.isMetaMask &&
+      !provider.isPhantom &&
+      !provider.isOkxWallet &&
+      !provider.isOKExWallet &&
+      !provider.isBinance,
+  );
 }
 
 export function AuthControl({
