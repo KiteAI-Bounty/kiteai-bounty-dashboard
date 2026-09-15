@@ -24,12 +24,13 @@ export type SessionUser = {
   github: { login: string } | null;
 };
 type ApiEnvelope<T> = { data?: T; error?: { code: string; message: string } };
-type WalletKind = "okx" | "metamask" | "phantom";
+type WalletKind = "okx" | "metamask" | "phantom" | "binance";
 const WALLET_KIND_KEY = "kiteai.walletProvider";
 
 declare global {
   interface Window {
     okxwallet?: Provider;
+    binanceWallet?: Provider;
     ethereum?: Provider;
     phantom?: { ethereum?: Provider };
   }
@@ -40,14 +41,16 @@ function getInjectedProviders() {
   return [
     ...(ethereum?.providers ?? []),
     window.okxwallet,
+    window.binanceWallet,
     window.phantom?.ethereum,
     ethereum,
   ].filter((provider, index, all): provider is Provider => Boolean(provider) && all.indexOf(provider) === index);
 }
 
-function getProvider(kind: "okx" | "metamask" | "phantom") {
+function getProvider(kind: WalletKind) {
   const providers = getInjectedProviders();
   if (kind === "okx") return window.okxwallet;
+  if (kind === "binance") return window.binanceWallet ?? providers.find((provider) => (provider as Provider & { isBinance?: boolean }).isBinance);
   if (kind === "phantom") return window.phantom?.ethereum ?? providers.find((provider) => provider.isPhantom);
   return providers.find((provider) => provider.isMetaMask && !provider.isPhantom);
 }
@@ -128,7 +131,8 @@ export function AuthControl({
   async function connect(kind: WalletKind) {
     const provider = getProvider(kind);
     if (!provider) {
-      setMessage(kind === "okx" ? "未检测到 OKX Wallet，请先安装或打开钱包扩展。" : kind === "phantom" ? "未检测到 Phantom，请先安装或打开钱包扩展。" : "未检测到 MetaMask，请先安装或打开钱包扩展。");
+      const walletName = kind === "okx" ? "OKX Wallet" : kind === "phantom" ? "Phantom" : kind === "binance" ? "Binance Wallet" : "MetaMask";
+      setMessage(`未检测到 ${walletName}，请先安装或打开钱包扩展。`);
       return;
     }
     setBusy(true);
@@ -273,6 +277,9 @@ export function AuthControl({
             </button>
             <button className="wallet-connect-choice" onClick={() => { setWalletMenuOpen(false); void connect("phantom"); }} role="menuitem" disabled={busy}>
               <Wallet size={15} /><span><strong>Phantom</strong><small>使用 Phantom 连接</small></span>
+            </button>
+            <button className="wallet-connect-choice" onClick={() => { setWalletMenuOpen(false); void connect("binance"); }} role="menuitem" disabled={busy}>
+              <Wallet size={15} /><span><strong>Binance Wallet</strong><small>使用币安钱包连接</small></span>
             </button>
           </div>}
         </div>
