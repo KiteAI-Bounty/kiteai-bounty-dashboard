@@ -110,6 +110,12 @@ export async function getUserProgress(userId: string) {
   const [submissions, completions] = await Promise.all([
     db.submission.findMany({
       where: { userId, weekId: { in: campaign.weeks.map((week) => week.id) } },
+      include: {
+        revisions: {
+          orderBy: { version: "desc" },
+          take: 1,
+        },
+      },
     }),
     db.weeklyCompletion.findMany({
       where: { userId, weekId: { in: campaign.weeks.map((week) => week.id) } },

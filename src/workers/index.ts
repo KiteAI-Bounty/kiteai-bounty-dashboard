@@ -19,7 +19,12 @@ async function main() {
       JSON.stringify({
         event: "worker.config.valid",
         mode: env.DATA_MODE,
-        handlers: ["system.ping", "ec.register_submission", "ec.sync_batch"],
+        handlers: [
+          "system.ping",
+          "ai.analyze_submission",
+          "ec.register_submission",
+          "ec.sync_batch",
+        ],
         ecEnabled: env.EC_PROVIDER_MODE !== "mock",
         paymentsEnabled: false,
       }),
@@ -35,7 +40,12 @@ async function main() {
   console.log(
     JSON.stringify({
       event: "worker.started",
-      handlers: ["system.ping", "ec.register_submission", "ec.sync_batch"],
+      handlers: [
+        "system.ping",
+        "ai.analyze_submission",
+        "ec.register_submission",
+        "ec.sync_batch",
+      ],
       ecProvider: env.EC_PROVIDER_MODE,
     }),
   );

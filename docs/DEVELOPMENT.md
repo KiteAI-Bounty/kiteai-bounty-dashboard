@@ -1,21 +1,24 @@
-# 本地开发与工程现状
+# 本地开发与部署指南
 
-更新日期：2026-09-10。当前交付包含可运行的工程框架及身份链路，不是完整 MVP。
+更新日期：2026-09-15。当前版本已经实现白名单登录、GitHub 绑定、周度贡献、GLM 预检查、Admin 审核、首次仓库 EC 登记与 PR 状态同步。奖励领取和主网支付保持关闭。
 
 ## 1. 技术栈
 
-| 层 | 已采用 |
+| 层 | 实现 |
 |---|---|
-| 前端 | React 19.2.8、Next.js 16.3.4 App Router、TypeScript |
-| 样式 | 原生 CSS 设计变量与响应式布局、Lucide 图标；不依赖在线字体 |
-| 后端 | Next.js Route Handlers；业务代码集中在 `src/modules` |
-| 数据 | PostgreSQL、Prisma 7.10.0、`@prisma/adapter-pg` |
-| 任务 | 独立 Node.js Worker、数据库租约和 `SKIP LOCKED` |
-| 检查 | ESLint、Prettier、TypeScript、Node test runner；GitHub Actions 配置 |
+| Web | React 19、Next.js 16 App Router、TypeScript |
+| API | Next.js Route Handlers |
+| 数据 | PostgreSQL、Prisma 7、`@prisma/adapter-pg` |
+| 后台任务 | PostgreSQL Job、90 秒租约、`SKIP LOCKED`、命令行 Worker／Vercel Cron |
+| AI | GLM OpenAI 兼容 Chat Completions 接口，结构化 JSON 结果 |
+| 外部服务 | GitHub OAuth、GitHub REST API、Electric Capital Open Dev Data PR |
+| 检查 | ESLint、Prettier、TypeScript、Node test runner、GitHub Actions |
 
-Node.js 要求 22.12+，建议 `.nvmrc` 指定的 22 系列。Prisma 固定在稳定版，不跟随 `latest` 的 8.0 候选版。`deepmerge-ts` 与 `mysql2` 采用修复版本 overrides，升级 Prisma 后应检查是否可移除；当前安装、Prisma 生成、迁移、测试及构建均已验证。
+Node.js 要求 22.12 以上且低于 25，建议使用 `.nvmrc` 指定的版本。
 
-## 2. 无数据库启动页面
+## 2. 本地启动
+
+仅预览页面时可使用 demo 模式：
 
 ```bash
 cp .env.example .env
@@ -23,42 +26,70 @@ npm ci
 npm run dev
 ```
 
-访问 `http://127.0.0.1:3000`。已有 `.env` 时保留现有配置，不重复复制覆盖。
+访问 `http://127.0.0.1:3000`。已有 `.env` 时不要覆盖。demo 数据仅用于界面预览，不会授予真实登录、审核或外部写入权限。
 
-默认 `APP_ENV=development`、`DATA_MODE=demo`，不连接数据库。页面演示时钟固定在北京时间 2026-09-30，所有钱包和提交记录均为虚构样例。该时钟仅用于演示，数据库模式使用服务端真实时间。
-
-| 路由 | 当前能力 |
-|---|---|
-| `/` | 活动首页、公开名单、月份及钱包筛选、钱包复制、外部资料链接 |
-| `/dashboard` | demo 展示样例；database 展示当前钱包、GitHub 和真实周进度 |
-| `/submissions/current` | 登录及 GitHub 绑定状态检查；提交写入仍禁用 |
-| `/rewards` | 奖励规则预览，领取始终禁用 |
-| `/admin` | demo 只读预览；database 只允许 Admin 查看空审核队列 |
-| `/admin/ec-batches` | Admin 可查看 EC 空批次页，不生成真实 PR |
-
-演示页不是登录机制，任何演示状态都不会授予后台权限。数据库模式从 HttpOnly 会话读取真实用户；管理员权限由服务端角色判断。
-
-## 3. PostgreSQL 开发模式
-
-本仓库提供 Docker Compose 配置，数据库仅绑定本机 5434 端口：
+完整功能使用 PostgreSQL：
 
 ```bash
 docker compose up -d postgres
 npm run db:deploy
 npm run db:seed
+npm run dev
 ```
 
-将 `.env` 中 `DATA_MODE` 改为 `database`，保留 `APP_ENV=development`，重启 Web。
+本地核心配置示例：
 
-基础迁移位于 `prisma/migrations/202609100001_init/`，身份迁移位于 `202609100002_authentication/`。种子脚本只初始化活动、一个草案奖励期与四个统计周，不写示例钱包、不授予 Admin、不伪造已合并记录；重复执行不会改写已有周期配置。活动开始时间为北京时间 2026-09-09 00:00。
+```dotenv
+APP_ENV=development
+DATA_MODE=database
+KITE_NETWORK=testnet
+EC_PROVIDER_MODE=mock
+CLAIMS_ENABLED=false
+DATABASE_URL=postgresql://kite:kite_local_only@127.0.0.1:5434/kite_bounty?schema=public
+APP_ORIGIN=http://127.0.0.1:3000
 
-也可使用自己的 PostgreSQL，通过 `DATABASE_URL` 指定连接。该环境在独立本地 PostgreSQL 15 实例上实际验证了迁移和 Worker；Compose 提供 PostgreSQL 17 配置，本次未运行 Docker 容器。
+GITHUB_OAUTH_CLIENT_ID=开发 OAuth App Client ID
+GITHUB_OAUTH_CLIENT_SECRET=开发 OAuth App Client Secret
 
-公开读取已连接数据库：读取活动、奖励期、周次及最多 100 位参与者。当前首版 API 返回整个奖励期；前端月份筛选选择与月份相交的周，不是完整的服务端分页、跨活动查询或月活统计接口。
+GLM_API_KEY=智谱 API Key
+GLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+GLM_MODEL=glm-4-flash
 
-数据库约束覆盖钱包唯一、GitHub ID 唯一、单用户唯一 GitHub、每用户每周唯一提交、提交修订版本、批次 PR 与任务幂等键。代码跨周去重、复杂角色变更审计、资格撤回及资金约束需在对应业务服务阶段继续完成，不因已有表就视为已实现。
+GITHUB_READ_TOKEN=可选的 GitHub 只读 Token
+GITHUB_EC_TOKEN=EC 运营 GitHub Token
+EC_FORK_OWNER=Anyi-zheng
+EC_FORK_REPOSITORY=open-dev-data
+EC_UPSTREAM_OWNER=electric-capital
+EC_UPSTREAM_REPOSITORY=open-dev-data
 
-## 4. 后台 Worker
+CRON_SECRET=至少16位随机字符串
+ADMIN_WALLET_ALLOWLIST=初始管理员钱包，可留空并使用数据库中的现有管理员
+```
+
+`GITHUB_READ_TOKEN` 未配置时会复用 `GITHUB_EC_TOKEN`。密钥只放在 `.env` 或 Vercel 环境变量，不提交到 Git。
+
+GitHub OAuth App 的 Homepage URL 必须与 `APP_ORIGIN` 完全一致，Authorization callback URL 为：
+
+```text
+APP_ORIGIN/api/auth/github/callback
+```
+
+## 3. 当前业务流程
+
+1. 白名单钱包签名登录并绑定唯一 GitHub 身份。
+2. 参与者提交当前周一个公开仓库中的一条或多条 Commit 链接。
+3. API 校验作者、Bot、Merge Commit、代码变更、统计周、仓库状态和 SHA 重复使用。
+4. 系统创建 `ai.analyze_submission`；参与者页面轮询并展示 GLM 建议。
+5. 首次仓库使用 `REPOSITORY` 范围，读取 README、文件树、依赖清单和 Commit，并生成 EC PR 草稿；已登记或正在登记的仓库使用 `COMMIT` 范围，只检查本周代码。
+6. Admin 查看代码证据和 AI 结果，决定通过或退回。GLM 有风险提示时 Admin 仍保留最终决定权。
+7. 审核通过后，已登记仓库直接产生该周完成记录；未登记仓库才创建 EC migration 和 PR。
+8. `ec.sync_batch` 轮询 PR。只有 PR 已合并并且 EC 上游数据仍包含该仓库的 KiteAI 归属，系统才创建 `VERIFIED` 登记并回填已通过的周度贡献。
+
+EC PR 被创建不等于参与者已经计入 Electric Capital；最终归属和开发者统计由 EC 的上游数据与统计规则决定。完整规则见 [EC 活跃开发者计入规则](EC_ACTIVE_DEVELOPER_RULES.md)。
+
+## 4. Worker 与 Vercel Cron
+
+本地可以运行单次或常驻 Worker：
 
 ```bash
 npm run worker:check
@@ -66,64 +97,70 @@ npm run worker:once
 npm run worker
 ```
 
-`worker:check` 只检查配置与已注册 handler，不声称数据库或外部服务健康。demo 模式 Worker 明确退出，不执行任务；database 模式使用与 Web 相同的连接配置。
+已注册任务类型：
 
-当前只有 `system.ping` handler。数据库队列支持原子领取、并发互斥、60 秒租约、重试次数、退避及过期任务处理。外部 EC 和支付任务没有 handler，不会被误标为成功。
-
-加入长任务前必须补充租约续期、外部操作幂等恢复、outbox 投递和死信处理。当前 outbox 只有表结构，生产 EC 自动化尚未实现。Ctrl+C 或 SIGTERM 会在当前短任务结束后停止 Worker。
-
-## 5. API 骨架与权限
-
-| 接口 | 当前响应 |
+| 类型 | 用途 |
 |---|---|
-| `GET /api/health` | 存活检测 |
-| `GET /api/health/ready` | demo 不依赖数据库；database 执行数据库连接检测 |
-| `GET /api/public/campaigns/current` | 活动及周配置、数据模式、时间 |
-| `GET /api/public/progress` | 只读钱包与周状态，专用公开 DTO |
-| `POST /api/auth/wallet/nonce` | 校验邀请、Origin 和 Kite 网络，返回五分钟 EIP-4361 挑战 |
-| `POST /api/auth/wallet/verify` | 验签并原子消费挑战，创建 HttpOnly 会话 |
-| `GET /api/auth/github` | 登录后创建一次性 state 和 PKCE，跳转 GitHub |
-| `GET /api/auth/github/callback` | 绑定唯一 GitHub User ID，不保存 OAuth Token |
-| `POST /api/auth/logout` | 删除服务端会话及 Cookie |
-| `GET /api/me` | 返回钱包、链、角色及 GitHub 绑定状态 |
-| `POST /api/submissions` | 401 `AUTH_REQUIRED` |
-| `GET /api/admin/dashboard` | 仅 Admin；通过鉴权后返回 501，统计尚未接入 |
-| `GET/POST /api/admin/participants` | Admin 查看及批量导入邀请白名单 |
-| `POST /api/admin/ec-batches` | 仅 Admin；通过鉴权后返回 501，不创建批次 |
-| `GET /api/rewards/eligibility` | 401 `AUTH_REQUIRED` |
-| `POST /api/rewards/claim` | 503 `FEATURE_DISABLED`，无资金操作 |
+| `system.ping` | 队列健康测试 |
+| `ai.analyze_submission` | GLM 仓库或 Commit 预检查 |
+| `ec.register_submission` | 查重并登记首次仓库，或完成已登记仓库的周记录 |
+| `ec.sync_batch` | 同步 EC PR 并验证上游归属 |
+| `payment.send` | 仅保留开发支付适配器；生产领取未开放 |
 
-认证使用钱包白名单准入、OKX 注入的 EVM provider、EIP-4361 一次性签名挑战及数据库会话。Admin 页面可以上传 `name,contact,github,wallet` CSV，钱包列必填且全局唯一。GitHub OAuth 使用 state、PKCE 和稳定数字 User ID；同一钱包只能绑定一个 GitHub，一个 GitHub 也不能绑定多个钱包，预填 GitHub 时必须与授权账号匹配。Admin 钱包在首次登录时按 `ADMIN_WALLET_ALLOWLIST` 授予角色。普通用户每次读取会话都必须仍有 ACTIVE 白名单记录，demo Cookie、header 或前端状态均不能授予权限。
+Vercel 部署使用 `vercel.json` 每分钟请求 `/api/cron/worker`。该路由要求：
 
-Admin 登录后直接进入 `/admin`，不绑定 GitHub，也不显示或进入个人看板、项目贡献和奖励页面。当前 Admin 首页负责参与白名单导入与名单查看；后续审核和 EC 功能从同一管理入口扩展。
-
-数据库模式本地配置示例：
-
-```dotenv
-APP_ENV=development
-DATA_MODE=database
-KITE_NETWORK=testnet
-APP_ORIGIN=http://127.0.0.1:3000
-GITHUB_OAUTH_CLIENT_ID=你的开发 OAuth App Client ID
-GITHUB_OAUTH_CLIENT_SECRET=你的开发 OAuth App Client Secret
-ADMIN_WALLET_ALLOWLIST=0x管理员钱包1,0x管理员钱包2
+```http
+Authorization: Bearer <CRON_SECRET>
 ```
 
-在 [GitHub OAuth Apps](https://github.com/settings/developers) 新建开发应用，Homepage URL 填写与 `APP_ORIGIN` 完全相同的值，Authorization callback URL 填写 `APP_ORIGIN/api/auth/github/callback`。正式环境另建应用并使用 HTTPS 域名。白名单模板可从 `/participants-template.csv` 下载。首版只支持普通 EOA 钱包签名，不支持 ERC-1271 合约钱包。
+一次请求最多处理六个任务，并在约 45 秒后停止领取新任务。Vercel 中必须配置同一个 `CRON_SECRET`；没有该变量时路由固定返回 401。
 
-## 6. 检查与数据库集成验证
+## 5. 页面和接口
+
+| 页面 | 当前能力 |
+|---|---|
+| `/` | 公开活动和参与进度 |
+| `/directions` | 六类官方贡献方向和验收要求 |
+| `/dashboard` | 当前参与者身份、绑定和周进度 |
+| `/submissions/current` | 本周 Commit 提交、当前状态和 AI 结果 |
+| `/admin` | 白名单、管理员、审核列表、AI 预检查和重跑 |
+| `/admin/ec-batches` | EC 登记批次、PR 链接和状态 |
+| `/rewards` | 奖励状态预览；领取仍关闭 |
+
+关键 API：
+
+| 接口 | 能力 |
+|---|---|
+| `GET/POST /api/submissions` | 当前周状态／提交或退回后重提 |
+| `GET/POST /api/admin/submissions` | Admin 审核队列／通过或退回 |
+| `POST /api/admin/submissions/:id/analyze` | 重新执行最新版本 AI 检查 |
+| `GET /api/admin/ec-batches` | EC 批次和 PR 状态 |
+| `GET /api/cron/worker` | 受密钥保护的后台任务入口 |
+| `GET /api/health/ready` | 数据库就绪检查 |
+
+## 6. 数据库迁移
+
+首次连接数据库或拉取新迁移后运行：
 
 ```bash
-npm run check
-npm run format:check
-npm run db:validate
-npm run build
-npm run worker:check
+npm run db:deploy
+npm run db:seed
 ```
 
-`npm ci` 的 postinstall 自动生成 Prisma Client，生成目录不提交。`build` 同时再次生成客户端，避免部署缺失生成代码。
+`202609150001_ai_pre_review` 为 `SubmissionRevision` 增加 AI 状态、结论和 PR 草稿字段，并为贡献 SHA 增加查询索引。生产环境部署前必须对目标 `DATABASE_URL` 执行 `npm run db:deploy`；Prisma 不会因为 Vercel 已连接数据库就自动创建新表或列。
 
-数据库集成测试只允许开发环境、数据库名称以 `_test` 结尾且 Job 队列为空：
+## 7. 本地检查
+
+完整静态和构建检查：
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+数据库集成测试只允许数据库名以 `_test` 结尾：
 
 ```bash
 export DATABASE_URL='postgresql://kite:kite_local_only@127.0.0.1:5434/kite_bounty_test?schema=public'
@@ -132,15 +169,32 @@ npm run db:seed
 npm run test:db
 ```
 
-测试验证钱包／GitHub／周提交唯一约束、两个 Worker 同时抢一条任务、未知 handler 不成功、过期租约达到重试上限后失败。身份 HTTP 验证覆盖 Origin 和网络拒绝、真实 EOA 签名、Admin 会话、nonce 防重放、GitHub state/PKCE、非法回调拒绝及注销。领域数据事务回滚，测试任务按本次唯一前缀清理。只对专用测试库运行；需恢复原数据库时关闭此 shell 或恢复环境变量。
+测试覆盖数据库唯一约束、并发任务领取、过期租约、未知任务失败，以及 AI Worker 结果持久化。EC 单元测试覆盖 AI PR 草稿传入、PR 状态同步和 migration 添加／移除判断。
 
-已执行：静态检查、类型检查、基础测试、生产构建；独立 PostgreSQL 两次迁移、种子初始化、数据库集成测试及 Worker 单次运行；六个页面、公开／受保护 API 和钱包身份 HTTP 流程检查。GitHub OAuth 的真实授权码交换需要项目方创建 OAuth App 后验收。当前没有可连接浏览器，因此未完成 OKX 弹窗交互与视觉验收。GitHub Actions 文件已提供，远端 CI 未执行。
+无需写数据库即可对公开 Commit 运行一次真实 GLM 检查：
 
-## 7. 下一阶段边界
+```bash
+npm run ai:check -- https://github.com/owner/repository/commit/full-sha
+```
 
-1. 实现 GitHub 仓库证据读取、周提交和修订。
-2. 实现 Admin 审核、代码证据快照和完整审计事务。
-3. 接通 outbox、EC provider、校验容器、PR 创建与状态回填。
-4. 在业务规则最终确认后实现奖励资格；Passport 支付单独验收。
+该命令会调用 GitHub 与 GLM，输出结构化建议，不会创建 EC PR，也不会修改贡献记录。
 
-生产环境会拒绝 demo 数据、测试链、mock EC 和开启支付。当前应用尚不具备正式业务上线条件；本地主网配置预留并不代表主网业务已实现。
+## 8. Vercel 上线配置
+
+Vercel 至少需要：
+
+- `APP_ENV=production`
+- `DATA_MODE=database`
+- `KITE_NETWORK=mainnet`
+- `EC_PROVIDER_MODE=live`
+- `CLAIMS_ENABLED=false`
+- `DATABASE_URL`
+- `APP_ORIGIN=https://实际域名`
+- GitHub OAuth 两项配置
+- EC fork、上游和 Token 配置
+- `GLM_API_KEY`
+- `CRON_SECRET`
+
+设置完成后对生产数据库执行迁移，再重新部署。当前代码会拒绝 production 使用 demo、测试网或 mock EC。奖励支付没有完成安全验收，必须保持 `CLAIMS_ENABLED=false`。
+
+真实 EC 合并由外部维护者控制。本地测试已经验证内部状态机和受控合并场景；现有真实 PR 被 EC 合并或关闭后，还需要核对一次线上 Cron、GitHub Token 权限、上游搜索和最终 `WeeklyCompletion` 回填。

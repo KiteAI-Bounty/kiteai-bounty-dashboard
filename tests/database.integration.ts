@@ -115,7 +115,12 @@ async function main() {
   });
   try {
     const ping = await db.job.create({
-      data: { key: `${prefix}-ping`, type: "system.ping", payload: {} },
+      data: {
+        key: `${prefix}-ping`,
+        type: "system.ping",
+        payload: {},
+        runAt: new Date(0),
+      },
     });
     const claimed = await Promise.all([runNextJob(), runNextJob()]);
     assert.equal(
@@ -134,6 +139,7 @@ async function main() {
         type: "ec.create-pr",
         payload: {},
         maxAttempts: 1,
+        runAt: new Date(0),
       },
     });
     await runNextJob();
@@ -158,8 +164,117 @@ async function main() {
       (await db.job.findUniqueOrThrow({ where: { id: expired.id } })).status,
       "FAILED",
     );
+    const aiUser = await db.user.create({
+      data: { wallet: "0x0000000000000000000000000000000000000099" },
+    });
+    await db.githubAccount.create({
+      data: {
+        userId: aiUser.id,
+        githubUserId: 9099n,
+        login: "ai-test-contributor",
+      },
+    });
+    const aiRepository = await db.repository.create({
+      data: {
+        githubRepoId: 9099n,
+        url: "https://github.com/example/ai-worker-test",
+        name: "ai-worker-test",
+        owner: "example",
+        description: "KiteAI integration test repository",
+        direction: "x402-service",
+        integration: "KiteAI x402",
+        defaultBranch: "main",
+      },
+    });
+    const aiSubmission = await db.submission.create({
+      data: {
+        userId: aiUser.id,
+        weekId: "kiteai-p1-w1",
+        repositoryId: aiRepository.id,
+        direction: "x402-service",
+        revisions: {
+          create: {
+            version: 1,
+            summary: "Implemented a tested KiteAI x402 payment integration.",
+            aiScope: "COMMIT",
+            evidence: {
+              create: {
+                sha: "9".repeat(40),
+                githubAuthorId: 9099n,
+                authoredAt: new Date("2026-09-10T00:00:00Z"),
+                committedAt: new Date("2026-09-10T00:00:00Z"),
+                url: `https://github.com/example/ai-worker-test/commit/${"9".repeat(40)}`,
+                snapshot: {
+                  stats: { additions: 20, deletions: 2 },
+                  parents: [{ sha: "parent" }],
+                },
+              },
+            },
+          },
+        },
+      },
+      include: { revisions: true },
+    });
+    const aiRevision = aiSubmission.revisions[0];
+    await db.job.create({
+      data: {
+        key: `${prefix}-ai`,
+        type: "ai.analyze_submission",
+        payload: { revisionId: aiRevision.id },
+        runAt: new Date(0),
+      },
+    });
+    const originalFetch = globalThis.fetch;
+    const originalGlmKey = process.env.GLM_API_KEY;
+    process.env.GLM_API_KEY = "database-test-key";
+    globalThis.fetch = async () =>
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                verdict: "PASS_RECOMMENDED",
+                summary: "The commit contains a relevant KiteAI integration.",
+                findings: [
+                  {
+                    check: "KiteAI relevance",
+                    status: "PASS",
+                    evidence: "Submitted commit snapshot",
+                    reason: "The contribution implements KiteAI x402.",
+                  },
+                ],
+                missingEvidence: [],
+                activeDays: 1,
+                prTitle: null,
+                prBody: null,
+              }),
+            },
+          },
+        ],
+      });
+    try {
+      assert.equal(await runNextJob(), true);
+      const analyzed = await db.submissionRevision.findUniqueOrThrow({
+        where: { id: aiRevision.id },
+      });
+      assert.equal(analyzed.aiStatus, "SUCCEEDED");
+      assert.equal(analyzed.aiVerdict, "PASS_RECOMMENDED");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalGlmKey === undefined) delete process.env.GLM_API_KEY;
+      else process.env.GLM_API_KEY = originalGlmKey;
+      await db.job.deleteMany({ where: { key: `${prefix}-ai` } });
+      await db.contributionEvidence.deleteMany({
+        where: { revisionId: aiRevision.id },
+      });
+      await db.submissionRevision.delete({ where: { id: aiRevision.id } });
+      await db.submission.delete({ where: { id: aiSubmission.id } });
+      await db.repository.delete({ where: { id: aiRepository.id } });
+      await db.githubAccount.delete({ where: { userId: aiUser.id } });
+      await db.user.delete({ where: { id: aiUser.id } });
+    }
     console.log(
-      "PASS: wallet/GitHub/invite/weekly uniqueness; concurrent claim; unsupported job; expired lease.",
+      "PASS: uniqueness; concurrent claim; unsupported job; expired lease; AI worker persistence.",
     );
   } finally {
     await db.job.deleteMany({ where: { key: { startsWith: prefix } } });

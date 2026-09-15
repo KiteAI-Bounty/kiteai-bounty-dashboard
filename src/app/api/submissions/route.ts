@@ -9,9 +9,14 @@ import { contributionDirections } from "@/modules/directions/catalog";
 const input = z.object({
   evidenceUrls: z.array(z.url()).min(1).max(20),
   summary: z.string().trim().min(20).max(4000),
-  direction: z.enum(contributionDirections.map((item) => item.value) as [string, ...string[]]).default("x402-service"),
+  direction: z
+    .enum(
+      contributionDirections.map((item) => item.value) as [string, ...string[]],
+    )
+    .default("x402-service"),
 });
 type GithubCommitData = {
+  sha?: string;
   author?: { id?: number | string; login?: string; type?: string };
   stats?: { additions?: number; deletions?: number; total?: number };
   parents?: Array<{ sha?: string }>;
@@ -20,6 +25,15 @@ type GithubCommitData = {
     committer?: { date?: string };
   };
 };
+
+function githubHeaders() {
+  const token = process.env.GITHUB_READ_TOKEN ?? process.env.GITHUB_EC_TOKEN;
+  return {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2026-03-10",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
 
 function parseCommitUrl(value: string) {
   const url = new URL(value);
@@ -33,6 +47,57 @@ function parseCommitUrl(value: string) {
     repo: match[2].replace(/\.git$/, ""),
     sha: match[3],
   };
+}
+
+export async function GET() {
+  try {
+    requireDatabaseMode();
+    const user = await requireUser();
+    if (user.role === "ADMIN")
+      throw new ApiError(
+        "ADMIN_NOT_PARTICIPANT",
+        "管理员没有参与者提交。",
+        403,
+      );
+    const { campaign } = await getCampaignWorkspace();
+    const week = currentWeek(campaign.weeks, new Date());
+    if (!week) return ok(null);
+    const submission = await getDb().submission.findUnique({
+      where: { userId_weekId: { userId: user.userId, weekId: week.id } },
+      include: {
+        revisions: {
+          orderBy: { version: "desc" },
+          take: 1,
+        },
+      },
+    });
+    const revision = submission?.revisions[0];
+    const analysis = revision?.aiFindings as
+      { activeDays?: number; missingEvidence?: string[] } | null | undefined;
+    return ok(
+      submission && revision
+        ? {
+            id: submission.id,
+            status: submission.status,
+            ai: {
+              scope: revision.aiScope,
+              status: revision.aiStatus,
+              verdict: revision.aiVerdict,
+              summary: revision.aiSummary,
+              findings: revision.aiFindings,
+              activeDays: analysis?.activeDays ?? 0,
+              missingEvidence: Array.isArray(analysis?.missingEvidence)
+                ? analysis.missingEvidence
+                : [],
+              model: revision.aiModel,
+              checkedAt: revision.aiCheckedAt?.toISOString() ?? null,
+            },
+          }
+        : null,
+    );
+  } catch (error) {
+    return apiError(error);
+  }
 }
 
 export async function POST(request: Request) {
@@ -56,6 +121,17 @@ export async function POST(request: Request) {
     const unique = new Map(
       commits.map((item) => [`${item.owner}/${item.repo}@${item.sha}`, item]),
     );
+    const repositories = new Set(
+      commits.map(
+        (item) => `${item.owner.toLowerCase()}/${item.repo.toLowerCase()}`,
+      ),
+    );
+    if (repositories.size !== 1)
+      throw new ApiError(
+        "MULTIPLE_REPOSITORIES",
+        "一次周度提交中的 Commit 必须属于同一个仓库。",
+        400,
+      );
     const evidence: Array<{
       commit: ReturnType<typeof parseCommitUrl>;
       data: GithubCommitData;
@@ -64,10 +140,7 @@ export async function POST(request: Request) {
       const response = await fetch(
         `https://api.github.com/repos/${commit.owner}/${commit.repo}/commits/${commit.sha}`,
         {
-          headers: {
-            Accept: "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2026-03-10",
-          },
+          headers: githubHeaders(),
           cache: "no-store",
         },
       );
@@ -98,35 +171,27 @@ export async function POST(request: Request) {
           400,
         );
       if ((data.stats?.additions ?? 0) + (data.stats?.deletions ?? 0) <= 0)
-        throw new ApiError(
-          "NO_CODE_CHANGE",
-          "Commit 未检测到代码变更。",
-          400,
-        );
-      const committedAt = new Date(
-        data.commit?.committer?.date ?? data.commit?.author?.date ?? 0,
-      );
+        throw new ApiError("NO_CODE_CHANGE", "Commit 未检测到代码变更。", 400);
+      const authoredAt = new Date(data.commit?.author?.date ?? 0);
       if (
-        committedAt < new Date(week.startsAt) ||
-        committedAt >= new Date(week.endsAt)
+        !Number.isFinite(authoredAt.getTime()) ||
+        authoredAt < new Date(week.startsAt) ||
+        authoredAt >= new Date(week.endsAt)
       )
         throw new ApiError(
           "COMMIT_OUT_OF_RANGE",
           "Commit 不属于当前统计周。",
           400,
         );
-      evidence.push({ commit, data });
+      evidence.push({
+        commit: { ...commit, sha: String(data.sha ?? commit.sha) },
+        data,
+      });
     }
     const first = evidence[0];
     const repoResponse = await fetch(
       `https://api.github.com/repos/${first.commit.owner}/${first.commit.repo}`,
-      {
-        headers: {
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2026-03-10",
-        },
-        cache: "no-store",
-      },
+      { headers: githubHeaders(), cache: "no-store" },
     );
     if (!repoResponse.ok)
       throw new ApiError(
@@ -134,7 +199,26 @@ export async function POST(request: Request) {
         "无法读取 GitHub 仓库，请稍后重试。",
         502,
       );
-    const repoData = await repoResponse.json();
+    const repoData = (await repoResponse.json()) as {
+      id: number | string;
+      fork?: boolean;
+      private?: boolean;
+      archived?: boolean;
+      description?: string | null;
+      default_branch?: string;
+    };
+    if (repoData.private)
+      throw new ApiError(
+        "PRIVATE_REPOSITORY",
+        "Electric Capital 当前重点统计公开开源仓库，请提交公开仓库。",
+        400,
+      );
+    if (repoData.archived)
+      throw new ApiError(
+        "ARCHIVED_REPOSITORY",
+        "已归档仓库不能作为本周活跃贡献仓库。",
+        400,
+      );
     if (repoData.fork)
       throw new ApiError(
         "FORK_REPOSITORY",
@@ -143,7 +227,14 @@ export async function POST(request: Request) {
       );
     const repository = await getDb().repository.upsert({
       where: { githubRepoId: BigInt(repoData.id) },
-      update: {},
+      update: {
+        url: `https://github.com/${first.commit.owner}/${first.commit.repo}`,
+        name: first.commit.repo,
+        owner: first.commit.owner,
+        description: repoData.description ?? "",
+        defaultBranch: repoData.default_branch ?? "main",
+        isFork: Boolean(repoData.fork),
+      },
       create: {
         githubRepoId: BigInt(repoData.id),
         url: `https://github.com/${first.commit.owner}/${first.commit.repo}`,
@@ -159,7 +250,9 @@ export async function POST(request: Request) {
     });
     const created = await getDb().$transaction(async (tx) => {
       await tx.enrollment.upsert({
-        where: { campaignId_userId: { campaignId: campaign.id, userId: user.userId } },
+        where: {
+          campaignId_userId: { campaignId: campaign.id, userId: user.userId },
+        },
         update: {},
         create: { campaignId: campaign.id, userId: user.userId },
       });
@@ -172,10 +265,57 @@ export async function POST(request: Request) {
           "本周已经提交过贡献。",
           409,
         );
+      const duplicate = await tx.contributionEvidence.findFirst({
+        where: {
+          sha: { in: evidence.map((item) => item.commit.sha) },
+          ...(existing
+            ? { revision: { submissionId: { not: existing.id } } }
+            : {}),
+        },
+        select: { sha: true },
+      });
+      if (duplicate)
+        throw new ApiError(
+          "COMMIT_ALREADY_SUBMITTED",
+          `Commit ${duplicate.sha.slice(0, 10)}… 已在其他周度提交中使用。`,
+          409,
+        );
+      const [registration, pendingBatch] = await Promise.all([
+        tx.ecRegistration.findUnique({
+          where: {
+            repositoryId_ecosystem: {
+              repositoryId: repository.id,
+              ecosystem: "KiteAI",
+            },
+          },
+        }),
+        tx.ecBatch.findFirst({
+          where: {
+            items: { some: { repositoryId: repository.id } },
+            status: {
+              in: [
+                "QUEUED",
+                "GENERATING",
+                "READY",
+                "PR_OPEN",
+                "CHANGES_REQUESTED",
+                "CI_FAILED",
+                "MERGED",
+              ],
+            },
+          },
+        }),
+      ]);
+      const aiScope =
+        registration?.status === "VERIFIED" || pendingBatch
+          ? "COMMIT"
+          : "REPOSITORY";
       const version = (existing?.version ?? 0) + 1;
       const revision = {
         version,
         summary: body.summary,
+        aiScope,
+        aiStatus: "PENDING",
         evidence: {
           create: evidence.map(({ commit, data }) => ({
             sha: commit.sha,
@@ -195,29 +335,52 @@ export async function POST(request: Request) {
           })),
         },
       };
-      if (existing)
-        return tx.submission.update({
-          where: { id: existing.id },
-          data: {
-            status: "SUBMITTED",
-            version,
-            submittedAt: new Date(),
-            repositoryId: repository.id,
-            direction: body.direction,
-            revisions: { create: revision },
-          },
-          select: { id: true, status: true, submittedAt: true },
-        });
-      return tx.submission.create({
-        data: {
-          userId: user.userId,
-          weekId: week.id,
-          repositoryId: repository.id,
-          direction: body.direction,
-          revisions: { create: revision },
+      const saved = existing
+        ? await tx.submission.update({
+            where: { id: existing.id },
+            data: {
+              status: "SUBMITTED",
+              version,
+              submittedAt: new Date(),
+              repositoryId: repository.id,
+              direction: body.direction,
+              revisions: { create: revision },
+            },
+            select: { id: true, status: true, submittedAt: true },
+          })
+        : await tx.submission.create({
+            data: {
+              userId: user.userId,
+              weekId: week.id,
+              repositoryId: repository.id,
+              direction: body.direction,
+              revisions: { create: revision },
+            },
+            select: { id: true, status: true, submittedAt: true },
+          });
+      const savedRevision = await tx.submissionRevision.findUniqueOrThrow({
+        where: {
+          submissionId_version: { submissionId: saved.id, version },
         },
-        select: { id: true, status: true, submittedAt: true },
+        select: { id: true },
       });
+      await tx.job.upsert({
+        where: { key: `ai.analyze.revision.${savedRevision.id}` },
+        update: {
+          status: "PENDING",
+          attempts: 0,
+          lastError: null,
+          runAt: new Date(),
+          lockedBy: null,
+          lockedUntil: null,
+        },
+        create: {
+          type: "ai.analyze_submission",
+          key: `ai.analyze.revision.${savedRevision.id}`,
+          payload: { revisionId: savedRevision.id },
+        },
+      });
+      return { ...saved, aiScope };
     });
     return ok(created);
   } catch (error) {

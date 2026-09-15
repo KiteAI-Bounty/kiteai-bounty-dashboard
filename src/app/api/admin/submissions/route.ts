@@ -54,6 +54,16 @@ export async function POST(request: Request) {
           "该提交当前不可审核。",
           409,
         );
+      if (
+        body.decision === "APPROVED" &&
+        process.env.GLM_API_KEY &&
+        revision.aiStatus !== "SUCCEEDED"
+      )
+        throw new ApiError(
+          "AI_REVIEW_PENDING",
+          "GLM 预检查尚未完成，请等待分析或点击重新分析。",
+          409,
+        );
       const updated = await tx.submission.update({
         where: { id: submission.id },
         data: { status: body.decision },

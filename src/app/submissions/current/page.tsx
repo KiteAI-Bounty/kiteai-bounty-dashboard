@@ -32,12 +32,50 @@ export default async function SubmissionPage() {
     const currentSubmission = week
       ? progress.submissions.find((submission) => submission.weekId === week.id)
       : null;
-    return <SubmissionPageContent status={currentSubmission?.status ?? null} />;
+    const revision = currentSubmission?.revisions[0];
+    const analysis = revision?.aiFindings as
+      { activeDays?: number; missingEvidence?: string[] } | null | undefined;
+    return (
+      <SubmissionPageContent
+        status={currentSubmission?.status ?? null}
+        analysis={
+          revision
+            ? {
+                scope: revision.aiScope,
+                status: revision.aiStatus,
+                verdict: revision.aiVerdict,
+                summary: revision.aiSummary,
+                findings: revision.aiFindings,
+                model: revision.aiModel,
+                activeDays: analysis?.activeDays ?? 0,
+                missingEvidence: Array.isArray(analysis?.missingEvidence)
+                  ? analysis.missingEvidence
+                  : [],
+              }
+            : null
+        }
+      />
+    );
   }
   return <SubmissionPageContent />;
 }
 
-function SubmissionPageContent({ status = null }: { status?: string | null }) {
+function SubmissionPageContent({
+  status = null,
+  analysis = null,
+}: {
+  status?: string | null;
+  analysis?: {
+    scope: string | null;
+    status: string;
+    verdict: string | null;
+    summary: string | null;
+    findings: unknown;
+    model: string | null;
+    activeDays: number;
+    missingEvidence: string[];
+  } | null;
+}) {
   const demo = readEnvironment(process.env).DATA_MODE === "demo";
   return (
     <>
@@ -66,7 +104,7 @@ function SubmissionPageContent({ status = null }: { status?: string | null }) {
               <SubmissionForm disabled />
             </fieldset>
           ) : (
-            <SubmissionForm initialStatus={status} />
+            <SubmissionForm initialStatus={status} initialAnalysis={analysis} />
           )}
         </section>
         <aside className="panel guide-panel">

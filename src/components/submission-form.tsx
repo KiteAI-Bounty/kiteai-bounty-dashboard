@@ -1,17 +1,75 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { contributionDirections } from "@/modules/directions/catalog";
 
-export function SubmissionForm({ disabled = false, initialStatus = null }: { disabled?: boolean; initialStatus?: string | null }) {
+type AiAnalysis = {
+  scope: string | null;
+  status: string;
+  verdict: string | null;
+  summary: string | null;
+  findings: unknown;
+  model: string | null;
+  activeDays: number;
+  missingEvidence: string[];
+};
+
+export function SubmissionForm({
+  disabled = false,
+  initialStatus = null,
+  initialAnalysis = null,
+}: {
+  disabled?: boolean;
+  initialStatus?: string | null;
+  initialAnalysis?: AiAnalysis | null;
+}) {
   const router = useRouter();
   const [links, setLinks] = useState("");
   const [summary, setSummary] = useState("");
-  const [direction, setDirection] = useState<string>(contributionDirections[0].value);
+  const [direction, setDirection] = useState<string>(
+    contributionDirections[0].value,
+  );
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(initialStatus);
+  const [analysis, setAnalysis] = useState<AiAnalysis | null>(initialAnalysis);
+
+  useEffect(() => {
+    if (
+      !status ||
+      !analysis ||
+      !["PENDING", "RUNNING"].includes(analysis.status)
+    )
+      return;
+    let stopped = false;
+    let attempts = 0;
+    const timer = window.setInterval(async () => {
+      attempts += 1;
+      try {
+        const response = await fetch("/api/submissions", {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        const result = await response.json();
+        if (!response.ok || stopped) return;
+        if (result.data?.status) setStatus(result.data.status);
+        if (result.data?.ai) setAnalysis(result.data.ai);
+        if (
+          !result.data?.ai ||
+          !["PENDING", "RUNNING"].includes(result.data.ai.status) ||
+          attempts >= 12
+        )
+          window.clearInterval(timer);
+      } catch {
+        if (attempts >= 12) window.clearInterval(timer);
+      }
+    }, 5000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [analysis, status]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,8 +91,18 @@ export function SubmissionForm({ disabled = false, initialStatus = null }: { dis
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.error?.message ?? "提交失败，请稍后重试。");
-      setMessage("提交成功，已进入管理员审核。");
+      setMessage("提交成功，正在进行 AI 预检查并等待管理员审核。");
       setStatus("SUBMITTED");
+      setAnalysis({
+        scope: result.data?.aiScope ?? "REPOSITORY",
+        status: "PENDING",
+        verdict: null,
+        summary: "正在分析仓库和 Commit 证据。",
+        findings: null,
+        model: null,
+        activeDays: 0,
+        missingEvidence: [],
+      });
       router.refresh();
       setLinks("");
       setSummary("");
@@ -64,7 +132,10 @@ export function SubmissionForm({ disabled = false, initialStatus = null }: { dis
           ))}
         </select>
         <small className="field-help">
-          {contributionDirections.find((item) => item.value === direction)?.description}
+          {
+            contributionDirections.find((item) => item.value === direction)
+              ?.description
+          }
         </small>
       </label>
       <label>
@@ -92,9 +163,63 @@ export function SubmissionForm({ disabled = false, initialStatus = null }: { dis
         />
       </label>
       {message && <p className="form-message">{message}</p>}
-      {status && <p className="submission-status">当前状态：{status === "SUBMITTED" ? "待审核" : status === "CHANGES_REQUESTED" ? "要求修改，可重新提交" : status === "APPROVED" ? "已通过，等待 EC" : status === "REJECTED" ? "已拒绝" : status}</p>}
+      {analysis && (
+        <div
+          className={`submission-ai ${analysis.verdict === "HIGH_RISK" ? "danger" : analysis.verdict === "CHANGES_RECOMMENDED" ? "warning" : ""}`}
+        >
+          <strong>
+            AI 预检查 ·{" "}
+            {analysis.status === "SUCCEEDED"
+              ? analysis.verdict === "PASS_RECOMMENDED"
+                ? "建议通过"
+                : analysis.verdict === "CHANGES_RECOMMENDED"
+                  ? "建议补充"
+                  : "高风险"
+              : analysis.status === "FAILED"
+                ? "分析失败"
+                : analysis.status === "SKIPPED"
+                  ? "尚未配置"
+                  : "分析中"}
+          </strong>
+          <p>{analysis.summary ?? "正在等待分析结果。"}</p>
+          {analysis.status === "SUCCEEDED" && (
+            <p>本次证据覆盖 {analysis.activeDays} 个贡献日。</p>
+          )}
+          {analysis.missingEvidence.length > 0 && (
+            <ul>
+              {analysis.missingEvidence.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          )}
+          <small>
+            {analysis.scope === "COMMIT"
+              ? "本次只检查新 Commit，不会重复创建 EC PR。"
+              : "本次包含首次仓库登记检查。"}
+            {analysis.model ? ` · ${analysis.model}` : ""}
+          </small>
+        </div>
+      )}
+      {status && (
+        <p className="submission-status">
+          当前状态：
+          {status === "SUBMITTED"
+            ? "待审核"
+            : status === "CHANGES_REQUESTED"
+              ? "要求修改，可重新提交"
+              : status === "APPROVED"
+                ? "已通过，等待 EC"
+                : status === "REJECTED"
+                  ? "已拒绝"
+                  : status}
+        </p>
+      )}
       <button className="button dark" type="submit" disabled={disabled || busy}>
-        {busy ? "提交中…" : status === "CHANGES_REQUESTED" ? "提交修改版本" : "提交本周贡献"}
+        {busy
+          ? "提交中…"
+          : status === "CHANGES_REQUESTED"
+            ? "提交修改版本"
+            : "提交本周贡献"}
       </button>
     </form>
   );

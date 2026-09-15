@@ -241,6 +241,15 @@ model SubmissionRevision {
   submissionId String
   version      Int
   summary      String
+  aiScope      String?
+  aiStatus     String   @default("PENDING")
+  aiVerdict    String?
+  aiSummary    String?
+  aiFindings   Json?
+  aiPrTitle    String?
+  aiPrBody     String?
+  aiModel      String?
+  aiCheckedAt  DateTime? @db.Timestamptz(3)
   createdAt    DateTime @default(now()) @db.Timestamptz(3)
   submission   Submission @relation(fields: [submissionId], references: [id])
   evidence     ContributionEvidence[]
@@ -260,6 +269,7 @@ model ContributionEvidence {
   snapshot     Json
   revision     SubmissionRevision @relation(fields: [revisionId], references: [id])
   @@unique([revisionId, sha])
+  @@index([sha])
   @@index([githubAuthorId, sha])
 }
 

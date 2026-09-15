@@ -37,6 +37,8 @@ async function github(path: string, init?: RequestInit) {
 export async function createEcPullRequest(input: {
   repositoryUrl: string;
   batchId: string;
+  title?: string;
+  body?: string;
 }) {
   const env = config();
   const upstream = await github(
@@ -90,17 +92,22 @@ export async function createEcPullRequest(input: {
       {
         method: "POST",
         body: JSON.stringify({
-          title: `Add KiteAI repository: ${input.repositoryUrl}`,
+          title: input.title ?? `Add KiteAI repository: ${input.repositoryUrl}`,
           head: `${forkOwner}:${branch}`,
           base,
-          body: `Submitted by KiteAI Bounty Dashboard.\n\nRepository: ${input.repositoryUrl}`,
+          body:
+            input.body ??
+            `Submitted by KiteAI Bounty Dashboard.\n\nRepository: ${input.repositoryUrl}`,
         }),
       },
     );
   } catch (error) {
-    if (!(error instanceof Error) || !error.message.includes("GitHub API 403")) throw error;
+    if (!(error instanceof Error) || !error.message.includes("GitHub API 403"))
+      throw error;
     return {
-      branch, path, baseSha,
+      branch,
+      path,
+      baseSha,
       headSha: String((file?.commit as { sha?: string })?.sha ?? ""),
       contentHash: createHash("sha256").update(content).digest("hex"),
       prNumber: null,
@@ -152,27 +159,73 @@ export async function verifyEcRepository(repositoryUrl: string) {
     `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}`,
   );
   const branch = String(upstream?.default_branch ?? "master");
+  const expected = repositoryUrl.replace(/\.git$/, "").replace(/\/$/, "");
+  const escaped = expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const line = new RegExp(`^repadd\\s+KiteAI\\s+${escaped}(?:\\s|$)`, "mi");
+  const removal = new RegExp(
+    `^(?:repdel|repremove|repdrop)\\s+KiteAI\\s+${escaped}(?:\\s|$)`,
+    "mi",
+  );
+  // Code search covers older migrations without fetching thousands of blobs.
+  // A recent-tree fallback below handles GitHub search indexing delay.
+  try {
+    const query = `"${expected}" repo:${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY} path:migrations`;
+    const search = await github(
+      `/search/code?q=${encodeURIComponent(query)}&per_page=100`,
+      { headers: { Accept: "application/vnd.github+json" } },
+    );
+    const matches = Array.isArray(search?.items) ? search.items : [];
+    const history: Array<{ path: string; action: "add" | "remove" }> = [];
+    for (const match of matches.slice(0, 50)) {
+      if (!match || typeof match !== "object") continue;
+      const path = String((match as { path?: unknown }).path ?? "");
+      if (!path.startsWith("migrations/")) continue;
+      const file = await github(
+        `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}/contents/${path
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}?ref=${encodeURIComponent(branch)}`,
+      );
+      if (!file || typeof file.content !== "string") continue;
+      const content = Buffer.from(
+        String(file.content).replace(/\s/g, ""),
+        "base64",
+      ).toString("utf8");
+      if (line.test(content)) history.push({ path, action: "add" });
+      if (removal.test(content)) history.push({ path, action: "remove" });
+    }
+    history.sort((a, b) => a.path.localeCompare(b.path));
+    if (history.length) return history.at(-1)?.action === "add";
+  } catch {
+    // Fall through to the bounded recent migration scan.
+  }
   const tree = await github(
     `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
   );
   const entries = Array.isArray(tree?.tree) ? tree.tree : [];
   const migrationEntries = entries.filter(
     (entry): entry is { path: string; type: string; sha: string } =>
-      Boolean(entry && typeof entry === "object" &&
-        String((entry as { path?: unknown }).path ?? "").startsWith("migrations/") &&
+      Boolean(
+        entry &&
+        typeof entry === "object" &&
+        String((entry as { path?: unknown }).path ?? "").startsWith(
+          "migrations/",
+        ) &&
         (entry as { type?: unknown }).type === "blob" &&
-        typeof (entry as { sha?: unknown }).sha === "string"),
+        typeof (entry as { sha?: unknown }).sha === "string",
+      ),
   );
-  const expected = repositoryUrl.replace(/\.git$/, "").replace(/\/$/, "");
-  const escaped = expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const line = new RegExp(`^repadd\\s+KiteAI\\s+${escaped}(?:\\s|$)`, "mi");
   // Keep verification bounded even while the upstream repository grows.
   for (const entry of migrationEntries.slice(-300).reverse()) {
     const blob = await github(
       `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}/git/blobs/${entry.sha}`,
     );
     if (!blob || typeof blob.content !== "string") continue;
-    const content = Buffer.from(String(blob.content).replace(/\s/g, ""), "base64").toString("utf8");
+    const content = Buffer.from(
+      String(blob.content).replace(/\s/g, ""),
+      "base64",
+    ).toString("utf8");
+    if (removal.test(content)) return false;
     if (line.test(content)) return true;
   }
   return false;

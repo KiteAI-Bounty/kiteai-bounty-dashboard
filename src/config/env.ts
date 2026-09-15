@@ -8,8 +8,13 @@ const schema = z.object({
   CLAIMS_ENABLED: z.enum(["false", "true"]).default("false"),
   PAYMENT_PROVIDER_MODE: z.enum(["mock", "agent_passport"]).default("mock"),
   GLM_API_KEY: z.string().min(1).optional(),
-  GLM_BASE_URL: z.string().url().default("https://open.bigmodel.cn/api/paas/v4"),
+  GLM_BASE_URL: z
+    .string()
+    .url()
+    .default("https://open.bigmodel.cn/api/paas/v4"),
   GLM_MODEL: z.string().default("glm-4-flash"),
+  GITHUB_READ_TOKEN: z.string().min(1).optional(),
+  CRON_SECRET: z.string().min(16).optional(),
   DATABASE_URL: z.string().url().optional(),
   APP_ORIGIN: z.string().url(),
   GITHUB_OAUTH_CLIENT_ID: z.string().min(1).optional(),
@@ -39,6 +44,8 @@ export function readEnvironment(source: Record<string, string | undefined>) {
     GLM_API_KEY: source.GLM_API_KEY,
     GLM_BASE_URL: source.GLM_BASE_URL,
     GLM_MODEL: source.GLM_MODEL,
+    GITHUB_READ_TOKEN: source.GITHUB_READ_TOKEN,
+    CRON_SECRET: source.CRON_SECRET,
     DATABASE_URL: source.DATABASE_URL,
     APP_ORIGIN: source.APP_ORIGIN ?? "http://127.0.0.1:3000",
     GITHUB_OAUTH_CLIENT_ID: source.GITHUB_OAUTH_CLIENT_ID,
@@ -62,7 +69,10 @@ export function readEnvironment(source: Record<string, string | undefined>) {
   ) {
     throw new Error("Production requires mainnet and live EC configuration.");
   }
-  if (env.CLAIMS_ENABLED === "true" && (env.APP_ENV === "production" || env.PAYMENT_PROVIDER_MODE !== "mock")) {
+  if (
+    env.CLAIMS_ENABLED === "true" &&
+    (env.APP_ENV === "production" || env.PAYMENT_PROVIDER_MODE !== "mock")
+  ) {
     throw new Error(
       "生产支付适配器尚未配置，CLAIMS_ENABLED 目前只能在开发模拟模式开启。",
     );

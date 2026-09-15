@@ -32,7 +32,7 @@ export default async function Admin() {
       include: {
         user: { include: { github: true } },
         week: true,
-        repository: true,
+        repository: { include: { registrations: true } },
         revisions: {
           orderBy: { version: "desc" },
           take: 1,
@@ -40,7 +40,9 @@ export default async function Admin() {
         },
       },
     });
-    const repositoryIds = [...new Set(reviewSubmissions.map((item) => item.repositoryId))];
+    const repositoryIds = [
+      ...new Set(reviewSubmissions.map((item) => item.repositoryId)),
+    ];
     const ecBatches = await getDb().ecBatch.findMany({
       where: { items: { some: { repositoryId: { in: repositoryIds } } } },
       orderBy: { createdAt: "desc" },
@@ -97,10 +99,13 @@ export default async function Admin() {
           <AdminWallets />
         </div>
         <AdminReviewQueue
+          aiEnabled={Boolean(process.env.GLM_API_KEY)}
           items={reviewSubmissions.flatMap((item) => {
             const revision = item.revisions[0];
             const ecBatch = ecBatches.find((batch) =>
-              batch.items.some((batchItem) => batchItem.repositoryId === item.repositoryId),
+              batch.items.some(
+                (batchItem) => batchItem.repositoryId === item.repositoryId,
+              ),
             );
             return revision
               ? [
@@ -109,7 +114,17 @@ export default async function Admin() {
                     status: item.status,
                     ecStatus: ecBatch?.status ?? null,
                     ecPrUrl: ecBatch?.prUrl ?? null,
-                    ecFailure: ecBatch?.validationLog ?? ecBatch?.items.find((batchItem) => batchItem.repositoryId === item.repositoryId)?.failure ?? null,
+                    ecFailure:
+                      ecBatch?.validationLog ??
+                      ecBatch?.items.find(
+                        (batchItem) =>
+                          batchItem.repositoryId === item.repositoryId,
+                      )?.failure ??
+                      null,
+                    registrationStatus:
+                      item.repository.registrations.find(
+                        (registration) => registration.ecosystem === "KiteAI",
+                      )?.status ?? null,
                     version: item.version,
                     user: {
                       wallet: item.user.wallet,
@@ -136,6 +151,14 @@ export default async function Admin() {
                         sha: evidence.sha,
                         url: evidence.url,
                       })),
+                      aiScope: revision.aiScope,
+                      aiStatus: revision.aiStatus,
+                      aiVerdict: revision.aiVerdict,
+                      aiSummary: revision.aiSummary,
+                      aiFindings: revision.aiFindings,
+                      aiPrTitle: revision.aiPrTitle,
+                      aiPrBody: revision.aiPrBody,
+                      aiModel: revision.aiModel,
                     },
                   },
                 ]

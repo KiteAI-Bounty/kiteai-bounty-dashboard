@@ -12,7 +12,7 @@ export async function runNextJob(): Promise<boolean> {
     WHERE "status" = 'RUNNING' AND "lockedUntil" < NOW() AND "attempts" >= "maxAttempts"`;
   const jobs = await db.$queryRaw<Job[]>`
     UPDATE "Job" SET "status" = 'RUNNING', "attempts" = "attempts" + 1,
-      "lockedBy" = ${token}, "lockedUntil" = NOW() + INTERVAL '60 seconds'
+      "lockedBy" = ${token}, "lockedUntil" = NOW() + INTERVAL '90 seconds'
     WHERE "id" = (
       SELECT "id" FROM "Job"
       WHERE (("status" = 'PENDING' AND "runAt" <= NOW())
@@ -22,7 +22,7 @@ export async function runNextJob(): Promise<boolean> {
     ) RETURNING *`;
   const job = jobs[0];
   if (!job) return false;
-  // Only the short system.ping handler is enabled. Add lease renewal before adding long external jobs.
+  // External handlers use bounded network timeouts shorter than this lease.
   try {
     await handleJob(job);
     await db.job.updateMany({

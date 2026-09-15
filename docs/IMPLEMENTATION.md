@@ -1,12 +1,12 @@
 # KiteAI Bounty 看板实现文档
 
-版本：V0.2 草案 · 更新日期：2026-09-10
+版本：V0.3 · 更新日期：2026-09-15
 
-产品规则见 [设计文档](DESIGN.md)。本文件是开发方案及已查证的外部接口清单。整体工程框架与 P1 身份链路已落地，当前可运行能力、启动方法及限制见 [开发指南](DEVELOPMENT.md)；审核写入、EC 自动化与支付尚未接入。未创建外部 PR 或执行付款。D1/D2 等待确认规则不得作为已确认事实发布。
+产品规则见 [设计文档](DESIGN.md)。本文件记录开发方案、已实现能力及外部接口。钱包登录、GitHub 绑定、周度 Commit 提交、Admin 审核、GLM 预检查、EC 登记 PR 与状态同步已经接入；奖励领取和主网支付仍未开放。启动、迁移和本地验证见 [开发指南](DEVELOPMENT.md)。
 
 ## 1. 技术方案与工程结构
 
-工程已采用 TypeScript、Next.js App Router、PostgreSQL、Prisma 与独立 Node Worker；Web 和 Worker 共用业务模块。数据库任务表已支持短任务领取和重试，outbox 当前仅有模型，尚未接通业务事件。EC 校验后续使用固定版本 Python／uv 工具容器，与 Web 进程隔离。
+工程采用 TypeScript、Next.js App Router、PostgreSQL、Prisma 与数据库任务队列；Web、命令行 Worker 和 Vercel Cron 共用同一组任务处理器。队列支持数据库租约、重试和过期任务恢复。EC migration 由服务端生成并通过 GitHub API 写入本方 fork；Open Dev Data CLI 的完整基线校验仍需继续接入。
 
 具体依赖版本在初始化时选择相互兼容的稳定版本并提交 lockfile；不在本文固定未经安装验证的版本组合。[Next.js 官方文档](https://nextjs.org/docs/app)
 
@@ -16,6 +16,7 @@ src/modules/auth/              钱包认证、GitHub 唯一绑定、Admin 权限
 src/modules/campaigns/         周期、参与名单、统计窗口
 src/modules/submissions/       每周提交、修订、贡献证据
 src/modules/reviews/           审核及审计
+src/modules/ai/                GLM 仓库／Commit 预检查
 src/modules/ec/                taxonomy、批次和 PR 状态
 src/modules/rewards/           资格、发放审核；后续领取
 src/integrations/github/       用户读取和运营写入两个客户端
@@ -26,21 +27,23 @@ prisma/                        schema、迁移和开发种子数据
 tests/                         业务、接口、并发和端到端验证
 ```
 
-### 1.1 AI 预审核模块（规划）
+### 1.1 AI 预审核模块（已实现首版）
 
-AI 预审核放在 Admin 确认之前，输入参与者提交的仓库 URL、Commit 快照、选择的贡献方向、summary，以及待生成的 EC migration。模块必须先运行确定性规则，再调用模型生成解释；模型结果只作为 Admin 的审核辅助信息。
+参与者提交后会创建 `ai.analyze_submission` 持久化任务。任务读取提交时保存的 Commit 快照；首次登记仓库时还读取 README、文件树和依赖清单，再调用 GLM 返回结构化检查结果。Admin 在分析完成前不能通过该版本，但模型结果只作为审核辅助，不能自动批准或拒绝提交。
 
 处理流程按仓库登记状态分流：首次提交尚未归入 KiteAI 的仓库时，GLM 分析仓库内容、KiteAI 关联和 EC 兼容性，并据真实代码生成 PR 描述草稿；仓库已登记后，后续周次只分析新 Commit 的作者、时间、原创性、代码变化和 KiteAI 关联，不生成 migration，也不重复创建 EC PR。完整规则见 [EC 活跃开发者计入规则](EC_ACTIVE_DEVELOPER_RULES.md)。
 
-确定性检查至少包括：
+提交接口已经执行以下确定性检查：
 
 1. GitHub 仓库公开可访问、非 Fork，Commit 作者与绑定 GitHub 身份一致。
 2. Commit 日期属于当前统计周，排除 Merge Commit、Bot、`[bot]` 和自动生成提交。
-3. 仓库未重复登记，已有 `KiteAI` 生态时只能生成 `repadd KiteAI <repo-url>`。
-4. migration 文件名和 `ecoadd`／`repadd`／`ecocon` DSL 通过 Open Dev Data 校验。
-5. 提交方向、README、依赖、代码证据与 KiteAI 关联要求一致。
+3. 同一周度提交的 Commit 必须属于同一公开、未归档、非 Fork 仓库。
+4. 完整 SHA 不能在其他周度提交中重复使用；退回修改只允许更新当前周记录。
+5. 服务端根据 EC 登记和进行中的登记批次选择 `REPOSITORY` 或 `COMMIT` 分析范围。
 
-模型分析结果保存为不可变审计快照，字段包括规则版本、模型版本、输入摘要、逐项结论、风险等级、建议和时间。建议结果分为 `PASS_RECOMMENDED`、`CHANGES_RECOMMENDED`、`HIGH_RISK`；任何结果都不能直接改变 Submission 状态。
+模型结果保存在对应 `SubmissionRevision`，包括分析范围、状态、模型、逐项结论、缺失证据、建议、PR 标题／正文草稿和时间。建议分为 `PASS_RECOMMENDED`、`CHANGES_RECOMMENDED`、`HIGH_RISK`；任何建议都不能直接改变 Submission 状态。活跃贡献日按 Commit authored time 转为北京时间后确定性去重，不采用模型估算。
+
+参与者页面提交后每五秒读取一次当前周状态，显示分析进度和建议；Admin 可以查看相同证据并重新排队分析。`npm run ai:check -- <commit-url>` 可在不写数据库的情况下执行一次真实 GitHub + GLM 检查。
 
 EC 反馈闭环在 PR 同步任务中实现：记录 PR 的 `OPEN`、`MERGED`、`CLOSED_UNMERGED`、Review 评论和上游 taxonomy 复核结果，作为后续规则评估数据。关闭 PR 不能单独解释为代码不合格，可能是重复或被其他 PR 替代；因此 AI 训练／评估必须结合 PR 描述、评论和最终迁移结果。
 
@@ -74,7 +77,11 @@ EC 反馈闭环在 PR 同步任务中实现：记录 PR 的 `OPEN`、`MERGED`、
 | `EC_UPSTREAM_REPOSITORY` | 正式为 `electric-capital/open-dev-data`；启动读取并校验 repository ID |
 | `EC_FORK_OWNER` | 团队控制的 GitHub 账号或组织，待提供 |
 | `GITHUB_OAUTH_CLIENT_ID/SECRET` | 开发和正式独立 OAuth App |
-| `GITHUB_EC_TOKEN_SECRET_REF` | 运营身份凭据引用，只在服务端读取 |
+| `GITHUB_EC_TOKEN` | 运营账号的服务端 Token，用于本方 fork 写入及向 EC 创建 PR |
+| `GITHUB_READ_TOKEN` | 可选的只读 Token；未配置时复用 `GITHUB_EC_TOKEN` 读取公开证据 |
+| `GLM_API_KEY` | 启用 AI 预检查；只保存在服务端环境变量 |
+| `GLM_BASE_URL` / `GLM_MODEL` | 默认智谱兼容接口与 `glm-4-flash`，可按部署环境覆盖 |
+| `CRON_SECRET` | Vercel Cron 调用 Worker 路由的 Bearer 密钥，至少 16 个字符 |
 | `ADMIN_WALLET_ALLOWLIST` | 由部署管理员配置，数据库审计角色变更 |
 | `DATABASE_URL` | 数据库模式必填，环境隔离，不进入客户端 |
 | `WEB3INSIGHT_API_BASE` | `https://api.web3insight.ai/v1` |
@@ -140,7 +147,7 @@ EC 没有本项目可直接申请的公开报表 API Key。官方提供 API 用�
 
 `U` 表示已核实的上游 owner/repo，正式为 `electric-capital/open-dev-data`；`F` 表示本方 fork。PR 号属于 `U`，分支和文件写入 `F`。运行时读取默认分支，本次快照为 `master`。
 
-实现采用一个预先创建并受 GitHub App 管理的团队 Fork，不在每次用户提交时创建 Fork。Admin 审核通过后，Worker 为该批次生成独立分支和稳定 migration，先按内容散列及 `head` 查重，再创建或更新上游 PR。平台只负责创建和监控 PR；Electric Capital 的维护者拥有最终审核与合并权。成功创建 PR 不改变周完成状态，只有同步到 `merged=true` 并重放上游 taxonomy、逐项核实条目后才发布完成事件。
+当前实现采用运营账号控制的固定 Fork 和 Token，不要求 Electric Capital 安装 GitHub App。Admin 审核通过后，Worker 先检查数据库登记、进行中的批次和 EC 上游 taxonomy：仓库已登记时直接记录本周有效 Commit；未登记时才生成独立分支、migration 和上游 PR。PR 标题与正文优先使用 GLM 根据真实仓库内容生成的草稿，并附参与者和 Commit 证据。平台只负责创建和监控 PR；Electric Capital 维护者拥有最终审核与合并权。成功创建 PR 不改变周完成状态，只有同步到 `merged=true` 且在上游 migration 中再次查到 KiteAI 归属后才生成完成记录。
 
 所有外部写操作必须幂等：超时先用批次、分支和 head 查询既有 PR；文件写入携带 blob SHA；并发冲突重新读取基线后生成新 revision；失败只重试 EC 作业，不回滚已通过的内部审核。`closed_unmerged`、鉴权失败、限流、网络错误和查询不确定性分别记录，禁止统一转成“未合并”或“已完成”。
 
@@ -239,13 +246,13 @@ Commit 日期是作者可设置的数据，时间窗口过滤不等于已证明�
 ### 5.3 审核事务与 EC 作业
 
 1. 锁定提交并验证审核版本，记录决定与审计日志。
-2. 同一数据库事务写 outbox。已有登记则排重算任务，否则加入未冻结批次。
-3. Worker 领取持久化任务，租约超时可恢复；基于批次和操作版本去重。
-4. 拉取上游固定快照并重放，排除已经登记及其他打开批次占用的仓库。
-5. 生成稳定 migration，保存内容散列、基线 SHA、工具版本及校验日志。
-6. 校验通过后写 fork，创建／复用 PR，保存外部 ID。每个写入阶段先核实是否已完成。
-7. 新仓库追加到打开批次时提高 revision，重新生成、校验、写文件并更新 PR 描述。
-8. 同步合并后重放 taxonomy，逐条登记证据确认，发送周状态和奖励重算事件。
+2. 同一事务创建幂等的 `ec.register_submission` 任务。
+3. Worker 领取任务，先读取本地 `EcRegistration`、已有批次和 EC 上游记录。
+4. 已登记仓库直接创建该提交的 `WeeklyCompletion`，不重复创建 EC PR。
+5. 未登记仓库生成稳定 migration，写入本方 fork 分支并创建或复用上游 PR。
+6. 创建 `ec.sync_batch` 延时任务；开放 PR 每十分钟继续轮询。
+7. PR 合并后读取上游 migration，只有找到该仓库最后有效的 `repadd KiteAI` 且未被后续移除时才写入 `VERIFIED` 登记。
+8. 登记成功后回填这个仓库所有已通过审核的周度提交。
 
 审核成功但 GitHub 失败时显示两个结果，重试仅重试 EC 作业。空变更不创建 PR。若已有外部 PR 正在登记同一仓库，可绑定该 PR 后监控并验收，不制造重复请求。
 
@@ -322,8 +329,8 @@ Signer／Passport 需证明受限授权覆盖实际转账，权限可撤销、�
 |---|---|---|
 | P0 配置与数据层 | 环境隔离、数据库约束、首期周种子、D1/D2 策略开关 | 日期边界及唯一约束验证；生产不能开模拟认证 |
 | P1 身份和公开名单（已完成） | OKX 测试网签名、OAuth、参与名单、个人看板 | 签名与防重放 HTTP 流程已验证；GitHub 双向唯一约束已通过数据库约束验证；真实 OAuth 回调待配置 GitHub App 后验收 |
-| P2 提交与审核 | 周单、修订、GitHub 证据、Admin 审核、内部统计 | 并发提交一人一单；旧版本审核失败；跨月统计正确 |
-| P3 EC 自动化 | 快照、校验、fork／分支、PR、状态同步、回填 | 在自有 sandbox 上游完成创建、修改、关闭、合并和故障恢复 |
+| P2 提交与审核（已完成首版） | 周单、修订、GitHub 证据、AI 预检查、Admin 审核 | 一人一周一单、退回重提、SHA 去重及 AI Worker 数据落库已测试 |
+| P3 EC 自动化（已完成首版） | 上游查重、fork／分支、PR、状态同步、回填 | mock 与受控仓库状态同步已测试；真实 EC 合并后的最终回填等待现有 PR 结果验证 |
 | P4 奖励资格 | 连续周规则、第五周门槛、60 人预算、发放审核 | 0／25／40 正确，迟到合并回填，支付始终关闭 |
 | P5 正式接入 | 主网认证、生产 OAuth、运营账号、真实有效 EC 登记 | 实际代码审核后提交真实 PR，记录“等待 EC”，不伪造合并验收 |
 | P6 支付专项 | Passport、主网 USDC、中心钱包执行及对账 | 受限权限和资金安全测试通过后才启用领取 |
@@ -346,7 +353,7 @@ Signer／Passport 需证明受限授权覆盖实际转账，权限可撤销、�
 | PR 内删除一个登记项后合并 | 被删项不能跟随其他项变为完成 |
 | 任意普通用户调用 Admin 接口 | 403，状态不变 |
 
-完整业务实现后运行类型检查、静态检查、针对以上不变量的测试、构建及浏览器流程验证。端到端测试只使用受控仓库，不向 EC 上游发送测试垃圾 PR。当前已完成的框架和身份检查见 [开发指南](DEVELOPMENT.md)，本节完整业务验收尚未完成。
+每次发布前运行类型检查、静态检查、业务测试、数据库集成测试和生产构建。端到端测试只使用受控仓库，不向 EC 上游发送测试 PR。当前实现及本地验证结果见 [开发指南](DEVELOPMENT.md)。
 
 ## 8. 外部依赖与开放事项
 
@@ -356,7 +363,8 @@ Signer／Passport 需证明受限授权覆盖实际转账，权限可撤销、�
 | EC 标准名称 | 已检索到 `KiteAI` | 运行时重放最新归属后使用 |
 | 每周完成及奖励期 D1/D2 | 已提出适配方案，待用户确认 | 影响完成计算和周期命名，不阻碍基础模块 |
 | 连续周、补充材料及活动结束日 | 文档给出提案，尚未全部明确 | 活动开放前确定并保存规则版本 |
-| GitHub fork 账号与 Token | 待项目方准备 | 阻碍正式外部写入，不阻碍 mock／sandbox 开发 |
+| GitHub fork 账号与 Token | 已完成当前环境接入；部署环境仍需单独配置 | 决定生产 EC PR 创建和公开 API 请求额度 |
+| GLM 与 Cron 密钥 | 本地 GLM 已联调；Vercel 环境待配置 | 决定线上 AI 任务和后台队列能否自动运行 |
 | Admin 钱包名单、正式域名 | 待项目方提供 | 正式权限和 OAuth 回调配置 |
 | EC 实际审核及榜单刷新 | 外部控制，无固定时限承诺 | 系统持续跟踪；交付不能承诺保证上榜 |
 | Web3Insight 数据权限和名称映射 | 文档已读，业务接口未实测 | 可选外部观察，不影响提交审核 |
