@@ -24,6 +24,8 @@ export type SessionUser = {
   github: { login: string } | null;
 };
 type ApiEnvelope<T> = { data?: T; error?: { code: string; message: string } };
+type WalletKind = "okx" | "metamask" | "phantom";
+const WALLET_KIND_KEY = "kiteai.walletProvider";
 
 declare global {
   interface Window {
@@ -123,7 +125,7 @@ export function AuthControl({
     };
   }, [demo, router, user]);
 
-  async function connect(kind: "okx" | "metamask" | "phantom") {
+  async function connect(kind: WalletKind) {
     const provider = getProvider(kind);
     if (!provider) {
       setMessage(kind === "okx" ? "未检测到 OKX Wallet，请先安装或打开钱包扩展。" : kind === "phantom" ? "未检测到 Phantom，请先安装或打开钱包扩展。" : "未检测到 MetaMask，请先安装或打开钱包扩展。");
@@ -200,6 +202,9 @@ export function AuthControl({
         (await verifyResponse.json()) as ApiEnvelope<SessionUser>;
       if (!verifyResponse.ok || !verified.data)
         throw new Error(verified.error?.message ?? "钱包登录失败。");
+      // Keep the selected provider across refreshes. This is only a UI hint;
+      // the server remains the source of truth for the authenticated wallet.
+      window.localStorage.setItem(WALLET_KIND_KEY, kind);
       setUser(verified.data);
       router.push(verified.data.role === "ADMIN" ? "/admin" : "/dashboard");
       router.refresh();
@@ -219,6 +224,18 @@ export function AuthControl({
         credentials: "same-origin",
       });
       if (!response.ok) throw new Error("退出失败，请重试。");
+      // Some EIP-2255 wallets support revoking this site's account permission.
+      // Unsupported wallets reject the request; in that case the server session
+      // is still cleared and the site will not treat the extension as logged in.
+      const kind = window.localStorage.getItem(WALLET_KIND_KEY) as WalletKind | null;
+      if (kind) {
+        const provider = getProvider(kind);
+        await provider?.request({
+          method: "wallet_revokePermissions",
+          params: [{ eth_accounts: {} }],
+        }).catch(() => undefined);
+        window.localStorage.removeItem(WALLET_KIND_KEY);
+      }
       setUser(null);
       router.push("/");
       router.refresh();
