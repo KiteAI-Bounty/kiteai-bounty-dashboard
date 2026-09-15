@@ -47,7 +47,7 @@ function getProvider(kind: "okx" | "metamask" | "phantom") {
   const providers = getInjectedProviders();
   if (kind === "okx") return window.okxwallet;
   if (kind === "phantom") return window.phantom?.ethereum ?? providers.find((provider) => provider.isPhantom);
-  return providers.find((provider) => provider.isMetaMask && !provider.isPhantom) ?? window.ethereum;
+  return providers.find((provider) => provider.isMetaMask && !provider.isPhantom);
 }
 
 export function AuthControl({
