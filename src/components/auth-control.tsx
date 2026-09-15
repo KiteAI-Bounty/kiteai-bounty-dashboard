@@ -138,6 +138,22 @@ export function AuthControl({
     setBusy(true);
     setMessage("");
     try {
+      // MetaMask may silently return the account previously authorized for this
+      // site. Requesting the account permission first opens its account picker,
+      // so switching accounts in the extension is reflected in this login.
+      if (kind === "metamask") {
+        await provider.request({
+          method: "wallet_requestPermissions",
+          params: [{ eth_accounts: {} }],
+        }).catch((error) => {
+          const code = typeof error === "object" && error && "code" in error
+            ? Number(error.code)
+            : 0;
+          // Older providers do not implement EIP-2253; regular account
+          // request below remains the fallback for those wallets.
+          if (code !== -32601 && code !== -32602) throw error;
+        });
+      }
       const accounts = (await provider.request({
         method: "eth_requestAccounts",
       })) as string[];
