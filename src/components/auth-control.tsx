@@ -20,6 +20,9 @@ type Provider = {
   isOkxWallet?: boolean;
   isOKExWallet?: boolean;
   isBinance?: boolean;
+  isBinanceWallet?: boolean;
+  isBinanceChain?: boolean;
+  isBinanceWeb3Wallet?: boolean;
 };
 export type SessionUser = {
   wallet: string;
@@ -34,36 +37,75 @@ declare global {
   interface Window {
     okxwallet?: Provider;
     binanceWallet?: Provider;
-    ethereum?: Provider;
+    binancew3w?: { ethereum?: Provider };
+    BinanceChain?: Provider;
+    binance?: Provider;
+    ethereum?: Provider & { providers?: Provider[] };
     phantom?: { ethereum?: Provider };
   }
 }
 
-function getInjectedProviders() {
+function isBinanceProvider(provider: unknown): provider is Provider {
+  if (!provider || typeof provider !== "object") return false;
+  const p = provider as Record<string, unknown>;
+  return Boolean(
+    p.isBinance ||
+      p.isBinanceWallet ||
+      p.isBinanceChain ||
+      p.isBinanceWeb3Wallet ||
+      p.bnbSign,
+  );
+}
+
+function isOkxProvider(provider: unknown): provider is Provider {
+  if (!provider || typeof provider !== "object") return false;
+  const p = provider as Record<string, unknown>;
+  return Boolean(p.isOkxWallet || p.isOKExWallet);
+}
+
+function isPhantomProvider(provider: unknown): provider is Provider {
+  if (!provider || typeof provider !== "object") return false;
+  const p = provider as Record<string, unknown>;
+  return Boolean(p.isPhantom);
+}
+
+function getInjectedProviders(discoveredProviders: Provider[] = []) {
+  if (typeof window === "undefined") return [];
   const ethereum = window.ethereum as (Provider & { providers?: Provider[] }) | undefined;
   return [
+    ...discoveredProviders,
     ...(ethereum?.providers ?? []),
     window.okxwallet,
+    window.binancew3w?.ethereum,
+    window.BinanceChain,
     window.binanceWallet,
+    window.binance,
     window.phantom?.ethereum,
     ethereum,
   ].filter((provider, index, all): provider is Provider => Boolean(provider) && all.indexOf(provider) === index);
 }
 
-function getProvider(kind: WalletKind) {
-  const providers = getInjectedProviders();
-  if (kind === "okx") return window.okxwallet;
-  if (kind === "binance") return window.binanceWallet ?? providers.find((provider) => provider.isBinance);
-  if (kind === "phantom") return window.phantom?.ethereum ?? providers.find((provider) => provider.isPhantom);
+function getProvider(kind: WalletKind, discoveredProviders: Provider[] = []) {
+  const providers = getInjectedProviders(discoveredProviders);
+  if (kind === "okx") return window.okxwallet ?? providers.find(isOkxProvider);
+  if (kind === "binance") {
+    return (
+      window.binancew3w?.ethereum ??
+      window.BinanceChain ??
+      window.binanceWallet ??
+      window.binance ??
+      providers.find(isBinanceProvider)
+    );
+  }
+  if (kind === "phantom") return window.phantom?.ethereum ?? providers.find(isPhantomProvider);
   // Several wallets expose `isMetaMask` for compatibility. Check their own
   // identity flags first so OKX/Phantom/Binance cannot be selected as MetaMask.
   return providers.find(
     (provider) =>
       provider.isMetaMask &&
-      !provider.isPhantom &&
-      !provider.isOkxWallet &&
-      !provider.isOKExWallet &&
-      !provider.isBinance,
+      !isPhantomProvider(provider) &&
+      !isOkxProvider(provider) &&
+      !isBinanceProvider(provider),
   );
 }
 
@@ -87,6 +129,24 @@ export function AuthControl({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const [discoveredProviders, setDiscoveredProviders] = useState<Provider[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const discovered = new Set<Provider>();
+    const handleAnnounce = (event: Event) => {
+      const detail = (event as CustomEvent<{ provider: Provider }>)?.detail;
+      if (detail?.provider && !discovered.has(detail.provider)) {
+        discovered.add(detail.provider);
+        setDiscoveredProviders(Array.from(discovered));
+      }
+    };
+    window.addEventListener("eip6963:announceProvider", handleAnnounce);
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+    return () => {
+      window.removeEventListener("eip6963:announceProvider", handleAnnounce);
+    };
+  }, []);
 
   useEffect(() => {
     if (demo) return;
@@ -105,7 +165,7 @@ export function AuthControl({
     const savedKind = window.localStorage.getItem(WALLET_KIND_KEY) as WalletKind | null;
     // Bind account-change handling to the provider selected at login. Listening
     // to every injected provider lets another extension log the user out.
-    const selectedProvider = savedKind ? getProvider(savedKind) : undefined;
+    const selectedProvider = savedKind ? getProvider(savedKind, discoveredProviders) : undefined;
     const providers = selectedProvider ? [selectedProvider] : [];
     if (!providers.length) return;
     let active = true;
@@ -142,10 +202,10 @@ export function AuthControl({
       active = false;
       for (const { provider, listener } of listeners) provider.removeListener?.("accountsChanged", listener);
     };
-  }, [demo, router, user]);
+  }, [demo, discoveredProviders, router, user]);
 
   async function connect(kind: WalletKind) {
-    const provider = getProvider(kind);
+    const provider = getProvider(kind, discoveredProviders);
     if (!provider) {
       const walletName = kind === "okx" ? "OKX Wallet" : kind === "phantom" ? "Phantom" : kind === "binance" ? "Binance Wallet" : "MetaMask";
       setMessage(`未检测到 ${walletName}，请先安装或打开钱包扩展。`);
@@ -269,7 +329,7 @@ export function AuthControl({
       // is still cleared and the site will not treat the extension as logged in.
       const kind = window.localStorage.getItem(WALLET_KIND_KEY) as WalletKind | null;
       if (kind) {
-        const provider = getProvider(kind);
+        const provider = getProvider(kind, discoveredProviders);
         await provider?.request({
           method: "wallet_revokePermissions",
           params: [{ eth_accounts: {} }],
@@ -301,7 +361,16 @@ export function AuthControl({
     <div className="auth-control">
       {!user && (
         <div className="wallet-connect-picker">
-          <button className="button dark compact" onClick={() => setWalletMenuOpen((open) => !open)} disabled={busy}>
+          <button
+            className="button dark compact"
+            onClick={() => {
+              setWalletMenuOpen((open) => !open);
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new Event("eip6963:requestProvider"));
+              }
+            }}
+            disabled={busy}
+          >
             <Wallet size={15} />{busy ? "等待钱包…" : "连接钱包"}
           </button>
           {walletMenuOpen && <div className="wallet-connect-menu" role="menu">
