@@ -230,39 +230,72 @@ export function AuthControl({
           if (code !== -32601 && code !== -32602) throw error;
         });
       }
-      const accounts = (await provider.request({
-        method: "eth_requestAccounts",
-      })) as string[];
+      let accounts: string[] = [];
+      try {
+        accounts = (await provider.request({
+          method: "eth_requestAccounts",
+        })) as string[];
+      } catch (reqError) {
+        const reqMsg = reqError instanceof Error ? reqError.message : String(reqError);
+        if (reqMsg.includes("bounds") || reqMsg.includes("visible screen space")) {
+          // Check if already authorized via eth_accounts:
+          const existing = (await provider.request({ method: "eth_accounts" }).catch(() => [])) as string[];
+          if (existing && existing.length > 0) {
+            accounts = existing;
+          } else {
+            // Prompt user and automatically poll for authorization:
+            setMessage("检测到钱包弹窗受屏幕分辨率或多显示器限制未自动弹出。请直接点击浏览器右上角插件栏的【钱包图标】手动允许连接，网页将自动继续…");
+            const pollStart = Date.now();
+            while (Date.now() - pollStart < 30000) {
+              await new Promise((resolve) => setTimeout(resolve, 1500));
+              const polled = (await provider.request({ method: "eth_accounts" }).catch(() => [])) as string[];
+              if (polled && polled.length > 0) {
+                accounts = polled;
+                setMessage("");
+                break;
+              }
+            }
+            if (!accounts.length) {
+              throw new Error("等待授权超时。请点击浏览器右上角插件栏中的钱包图标手动授权连接，或将浏览器窗口拖至屏幕正中央。");
+            }
+          }
+        } else {
+          throw reqError;
+        }
+      }
       const address = accounts[0];
       if (!address) throw new Error("钱包没有返回可用地址。");
       const chainHex = `0x${chain.id.toString(16)}`;
-      try {
-        await provider.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: chainHex }],
-        });
-      } catch (error) {
-        const code =
-          typeof error === "object" && error && "code" in error
-            ? Number(error.code)
-            : 0;
-        if (code !== 4902) throw error;
-        await provider.request({
-          method: "wallet_addEthereumChain",
-          params: [
-            {
-              chainId: chainHex,
-              chainName: chain.name,
-              nativeCurrency: {
-                name: chain.symbol,
-                symbol: chain.symbol,
-                decimals: 18,
+      const currentChainHex = (await provider.request({ method: "eth_chainId" }).catch(() => null)) as string | null;
+      if (currentChainHex && currentChainHex.toLowerCase() !== chainHex.toLowerCase()) {
+        try {
+          await provider.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: chainHex }],
+          });
+        } catch (error) {
+          const code =
+            typeof error === "object" && error && "code" in error
+              ? Number(error.code)
+              : 0;
+          if (code !== 4902) throw error;
+          await provider.request({
+            method: "wallet_addEthereumChain",
+            params: [
+              {
+                chainId: chainHex,
+                chainName: chain.name,
+                nativeCurrency: {
+                  name: chain.symbol,
+                  symbol: chain.symbol,
+                  decimals: 18,
+                },
+                rpcUrls: [chain.rpc],
+                blockExplorerUrls: [chain.explorer],
               },
-              rpcUrls: [chain.rpc],
-              blockExplorerUrls: [chain.explorer],
-            },
-          ],
-        });
+            ],
+          });
+        }
       }
       const actualChain = Number.parseInt(
         (await provider.request({ method: "eth_chainId" })) as string,
@@ -309,7 +342,14 @@ export function AuthControl({
       router.push(verified.data.role === "ADMIN" ? "/admin" : "/dashboard");
       router.refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "钱包请求未完成。");
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes("bounds") || msg.includes("visible screen space")) {
+        setMessage("检测到钱包弹窗超出屏幕可视范围。请直接点击浏览器右上角插件栏的【钱包图标】手动确认，或将浏览器移至屏幕中央。");
+      } else if (msg.includes("User rejected") || msg.includes("User denied") || msg.includes("4001")) {
+        setMessage("已取消钱包连接或签名。");
+      } else {
+        setMessage(msg || "钱包请求未完成。");
+      }
     } finally {
       setBusy(false);
     }
