@@ -72,7 +72,7 @@ EC 反馈闭环在 PR 同步任务中实现：记录 PR 的 `OPEN`、`MERGED`、
 | `EC_PROVIDER_MODE` | `mock / sandbox / live`；测试只允许受控 sandbox 上游 |
 | `CLAIMS_ENABLED` | MVP 固定 `false` |
 | `CAMPAIGN_TIMEZONE` | `Asia/Shanghai` |
-| `CAMPAIGN_START_AT` | `2026-09-09T00:00:00+08:00` |
+| `CAMPAIGN_START_AT` | `2026-09-14T00:00:00+08:00` |
 | `EC_ECOSYSTEM_NAME` | `KiteAI` |
 | `EC_UPSTREAM_REPOSITORY` | 正式为 `electric-capital/open-dev-data`；启动读取并校验 repository ID |
 | `EC_FORK_OWNER` | 团队控制的 GitHub 账号或组织，待提供 |

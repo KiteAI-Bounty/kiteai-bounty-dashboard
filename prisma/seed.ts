@@ -15,7 +15,9 @@ async function main() {
   await db.$transaction(async (tx) => {
     await tx.campaign.upsert({
       where: { id: initialCampaign.id },
-      update: {},
+      update: {
+        startsAt: new Date(initialCampaign.startsAt),
+      },
       create: {
         id: initialCampaign.id,
         name: initialCampaign.name,
@@ -26,7 +28,11 @@ async function main() {
     });
     await tx.rewardPeriod.upsert({
       where: { id: "kiteai-p1" },
-      update: {},
+      update: {
+        startsAt: new Date(initialCampaign.startsAt),
+        endsAt: new Date(initialCampaign.weeks[3].endsAt),
+        payoutFrom: new Date(initialCampaign.weeks[3].endsAt),
+      },
       create: {
         id: "kiteai-p1",
         campaignId: initialCampaign.id,
@@ -40,7 +46,10 @@ async function main() {
     for (const week of initialCampaign.weeks) {
       await tx.campaignWeek.upsert({
         where: { id: week.id },
-        update: {},
+        update: {
+          startsAt: new Date(week.startsAt),
+          endsAt: new Date(week.endsAt),
+        },
         create: {
           id: week.id,
           periodId: "kiteai-p1",

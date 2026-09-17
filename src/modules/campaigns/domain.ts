@@ -1,5 +1,5 @@
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-export const CAMPAIGN_START = "2026-09-09T00:00:00+08:00";
+export const CAMPAIGN_START = "2026-09-14T00:00:00+08:00";
 
 export type Week = {
   id: string;
