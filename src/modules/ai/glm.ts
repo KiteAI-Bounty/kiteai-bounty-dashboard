@@ -34,8 +34,16 @@ const analysisSchema = z.object({
       z.object({
         check: z.string().min(1).max(200),
         status: z.enum(["PASS", "WARNING", "FAIL"]),
-        evidence: z.string().max(2000).default(""),
-        reason: z.string().min(1).max(2000),
+        evidence: z
+          .string()
+          .max(2000)
+          .nullish()
+          .transform((v) => v ?? ""),
+        reason: z
+          .string()
+          .max(2000)
+          .nullish()
+          .transform((v) => v ?? ""),
       }),
     )
     .max(30),
