@@ -3,8 +3,11 @@ import { PageTitle, DemoNote, LockedPage } from "@/components/ui";
 import { SubmissionForm } from "@/components/submission-form";
 import { readEnvironment } from "@/config/env";
 import { getCurrentUser } from "@/modules/auth/service";
-import { getUserProgress } from "@/modules/campaigns/service";
-import { currentWeek } from "@/modules/campaigns/domain";
+import {
+  getCampaignWorkspace,
+  getUserProgress,
+} from "@/modules/campaigns/service";
+import { currentWeek, weekLabel, type Week } from "@/modules/campaigns/domain";
 import { redirect } from "next/navigation";
 
 export default async function SubmissionPage() {
@@ -37,6 +40,7 @@ export default async function SubmissionPage() {
       { activeDays?: number; missingEvidence?: string[] } | null | undefined;
     return (
       <SubmissionPageContent
+        week={week ?? null}
         status={currentSubmission?.status ?? null}
         analysis={
           revision
@@ -57,13 +61,17 @@ export default async function SubmissionPage() {
       />
     );
   }
-  return <SubmissionPageContent />;
+  const workspace = await getCampaignWorkspace();
+  const week = currentWeek(workspace.campaign.weeks, new Date(workspace.now));
+  return <SubmissionPageContent week={week ?? null} />;
 }
 
 function SubmissionPageContent({
+  week,
   status = null,
   analysis = null,
 }: {
+  week: Week | null;
   status?: string | null;
   analysis?: {
     scope: string | null;
@@ -90,7 +98,11 @@ function SubmissionPageContent({
           <div className="panel-title">
             <div>
               <h2>本周贡献</h2>
-              <p>第 1 周 · 09/09 — 09/15（演示）</p>
+              <p>
+                {week
+                  ? `第 ${week.number} 周 · ${weekLabel(week)} · 北京时间`
+                  : "当前不在可提交的统计周内"}
+              </p>
               <p className="submission-hint">
                 请提交本周有效 Commit
                 链接（每行一条）。系统将自动识别关联仓库；请简要说明代码变更及其与
