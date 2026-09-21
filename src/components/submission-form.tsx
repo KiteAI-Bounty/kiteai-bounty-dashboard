@@ -148,6 +148,9 @@ export function SubmissionForm({
           required
           disabled={disabled || busy}
         />
+        <small className="field-help">
+          支持提交个人独立开源仓库的 Commit。若向官方组织（如 gokite-ai）贡献，必须在 PR 合并至主分支后方可提交对应 Commit。
+        </small>
       </label>
       <label>
         本周完成说明

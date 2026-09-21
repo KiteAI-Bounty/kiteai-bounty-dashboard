@@ -222,9 +222,47 @@ export async function POST(request: Request) {
     if (repoData.fork)
       throw new ApiError(
         "FORK_REPOSITORY",
-        "Fork 仓库中的历史提交不计入贡献，请提交原始公开仓库中的 Commit。",
+        "Fork 仓库中的历史提交不计入贡献。请提交您独立拥有的公开仓库，或向官方仓库提交 PR 并合入主分支后再提交对应 Commit。",
         400,
       );
+    const isOwner =
+      first.commit.owner.toLowerCase() === user.github.login.toLowerCase();
+    const isOfficial =
+      first.commit.owner.toLowerCase() === "gokite-ai";
+    const defaultBranch = repoData.default_branch ?? "main";
+
+    if (!isOwner || isOfficial) {
+      for (const item of evidence) {
+        const compareResponse = await fetch(
+          `https://api.github.com/repos/${item.commit.owner}/${item.commit.repo}/compare/${item.commit.sha}...${defaultBranch}`,
+          { headers: githubHeaders(), cache: "no-store" },
+        );
+        if (!compareResponse.ok) {
+          throw new ApiError(
+            "COMMIT_NOT_IN_BRANCH",
+            `无法在仓库 ${item.commit.owner}/${item.commit.repo} 中验证 Commit ${item.commit.sha.slice(0, 10)} 的分支状态。`,
+            400,
+          );
+        }
+        const compareData = (await compareResponse.json()) as {
+          status: string;
+          behind_by: number;
+          ahead_by: number;
+        };
+        if (
+          compareData.behind_by > 0 ||
+          compareData.status === "diverged" ||
+          compareData.status === "behind"
+        ) {
+          throw new ApiError(
+            "COMMIT_NOT_MERGED",
+            `向组织/官方仓库（${item.commit.owner}/${item.commit.repo}）贡献的代码，必须已合并（Merged）到主分支（${defaultBranch}）方可提交。若 PR 仍在审核中，请等待官方合入；或请在个人账号下创建独立开源项目仓库后提交。`,
+            400,
+          );
+        }
+      }
+    }
+
     const repository = await getDb().repository.upsert({
       where: { githubRepoId: BigInt(repoData.id) },
       update: {
@@ -232,8 +270,9 @@ export async function POST(request: Request) {
         name: first.commit.repo,
         owner: first.commit.owner,
         description: repoData.description ?? "",
-        defaultBranch: repoData.default_branch ?? "main",
+        defaultBranch,
         isFork: Boolean(repoData.fork),
+        isOfficial,
       },
       create: {
         githubRepoId: BigInt(repoData.id),
@@ -243,9 +282,9 @@ export async function POST(request: Request) {
         description: repoData.description ?? "",
         direction: "待管理员审核",
         integration: "待管理员审核",
-        defaultBranch: repoData.default_branch ?? "main",
+        defaultBranch,
         isFork: Boolean(repoData.fork),
-        isOfficial: false,
+        isOfficial,
       },
     });
     const created = await getDb().$transaction(async (tx) => {
@@ -307,7 +346,9 @@ export async function POST(request: Request) {
         }),
       ]);
       const aiScope =
-        registration?.status === "VERIFIED" || pendingBatch
+        repository.isOfficial ||
+        registration?.status === "VERIFIED" ||
+        pendingBatch
           ? "COMMIT"
           : "REPOSITORY";
       const version = (existing?.version ?? 0) + 1;
