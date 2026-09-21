@@ -111,6 +111,7 @@ export async function getUserProgress(userId: string) {
     db.submission.findMany({
       where: { userId, weekId: { in: campaign.weeks.map((week) => week.id) } },
       include: {
+        repository: true,
         revisions: {
           orderBy: { version: "desc" },
           take: 1,

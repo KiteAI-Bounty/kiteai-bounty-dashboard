@@ -9,6 +9,7 @@ import { contributionDirections } from "@/modules/directions/catalog";
 const input = z.object({
   evidenceUrls: z.array(z.url()).min(1).max(20),
   summary: z.string().trim().min(20).max(4000),
+  reusePreviousProject: z.boolean().default(false),
   direction: z
     .enum(
       contributionDirections.map((item) => item.value) as [string, ...string[]],
@@ -287,6 +288,9 @@ export async function POST(request: Request) {
         isOfficial,
       },
     });
+    const previousWeekIds = campaign.weeks
+      .filter((item) => Date.parse(item.startsAt) < Date.parse(week.startsAt))
+      .map((item) => item.id);
     const created = await getDb().$transaction(async (tx) => {
       await tx.enrollment.upsert({
         where: {
@@ -304,6 +308,31 @@ export async function POST(request: Request) {
           "本周已经提交过贡献。",
           409,
         );
+      const previousSubmission = body.reusePreviousProject
+        ? await tx.submission.findFirst({
+            where: {
+              userId: user.userId,
+              weekId: { in: previousWeekIds },
+            },
+            orderBy: { week: { startsAt: "desc" } },
+          })
+        : null;
+      if (body.reusePreviousProject && !previousSubmission)
+        throw new ApiError(
+          "PREVIOUS_PROJECT_NOT_FOUND",
+          "没有找到可沿用的上周项目，请重新选择项目方向。",
+          409,
+        );
+      if (
+        previousSubmission &&
+        previousSubmission.repositoryId !== repository.id
+      )
+        throw new ApiError(
+          "PREVIOUS_PROJECT_MISMATCH",
+          "当前 Commit 不属于上周项目。如需更换项目，请点击“更换项目或方向”后再提交。",
+          409,
+        );
+      const direction = previousSubmission?.direction ?? body.direction;
       const duplicate = await tx.contributionEvidence.findFirst({
         where: {
           sha: { in: evidence.map((item) => item.commit.sha) },
@@ -384,7 +413,7 @@ export async function POST(request: Request) {
               version,
               submittedAt: new Date(),
               repositoryId: repository.id,
-              direction: body.direction,
+              direction,
               revisions: { create: revision },
             },
             select: { id: true, status: true, submittedAt: true },
@@ -394,7 +423,7 @@ export async function POST(request: Request) {
               userId: user.userId,
               weekId: week.id,
               repositoryId: repository.id,
-              direction: body.direction,
+              direction,
               revisions: { create: revision },
             },
             select: { id: true, status: true, submittedAt: true },

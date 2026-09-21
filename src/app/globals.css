@@ -1051,6 +1051,56 @@ tbody tr:hover {
   font-size: 12px;
   line-height: 1.8;
 }
+.continuation-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 0 22px;
+  padding: 15px 16px;
+  border: 1px solid #d7e4d7;
+  border-radius: 10px;
+  background: #f4f8f1;
+}
+.continuation-card small,
+.continuation-card a,
+.continuation-card p {
+  display: block;
+}
+.continuation-card small {
+  color: #7f8f84;
+  font-size: 10px;
+}
+.continuation-card a {
+  margin-top: 5px;
+  color: #315f43;
+  font-size: 13px;
+  font-weight: 650;
+}
+.continuation-card p {
+  margin-top: 6px;
+  color: #6d7d72;
+  font-size: 10px;
+}
+.continuation-card .text-link,
+.reuse-project-link {
+  flex: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.reuse-project-link {
+  margin: 0 0 14px;
+  padding: 0;
+}
+.field-help {
+  display: block;
+  margin-top: 7px;
+  color: #7d8b82;
+  font-size: 10px;
+  line-height: 1.7;
+}
 .form-message {
   margin: -4px 0 16px;
   color: #627b68;

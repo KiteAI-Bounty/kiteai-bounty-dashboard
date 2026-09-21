@@ -35,12 +35,40 @@ export default async function SubmissionPage() {
     const currentSubmission = week
       ? progress.submissions.find((submission) => submission.weekId === week.id)
       : null;
+    const weekStartById = new Map(
+      progress.campaign.weeks.map((item) => [
+        item.id,
+        Date.parse(item.startsAt),
+      ]),
+    );
+    const previousSubmission = week
+      ? progress.submissions
+          .filter(
+            (submission) =>
+              (weekStartById.get(submission.weekId) ?? Number.POSITIVE_INFINITY) <
+              Date.parse(week.startsAt),
+          )
+          .sort(
+            (a, b) =>
+              (weekStartById.get(b.weekId) ?? 0) -
+              (weekStartById.get(a.weekId) ?? 0),
+          )[0]
+      : undefined;
     const revision = currentSubmission?.revisions[0];
     const analysis = revision?.aiFindings as
       { activeDays?: number; missingEvidence?: string[] } | null | undefined;
     return (
       <SubmissionPageContent
         week={week ?? null}
+        previousProject={
+          previousSubmission
+            ? {
+                name: `${previousSubmission.repository.owner}/${previousSubmission.repository.name}`,
+                url: previousSubmission.repository.url,
+                direction: previousSubmission.direction,
+              }
+            : null
+        }
         status={currentSubmission?.status ?? null}
         analysis={
           revision
@@ -68,10 +96,16 @@ export default async function SubmissionPage() {
 
 function SubmissionPageContent({
   week,
+  previousProject = null,
   status = null,
   analysis = null,
 }: {
   week: Week | null;
+  previousProject?: {
+    name: string;
+    url: string;
+    direction: string;
+  } | null;
   status?: string | null;
   analysis?: {
     scope: string | null;
@@ -116,7 +150,11 @@ function SubmissionPageContent({
               <SubmissionForm disabled />
             </fieldset>
           ) : (
-            <SubmissionForm initialStatus={status} initialAnalysis={analysis} />
+            <SubmissionForm
+              previousProject={previousProject}
+              initialStatus={status}
+              initialAnalysis={analysis}
+            />
           )}
         </section>
         <aside className="panel guide-panel">

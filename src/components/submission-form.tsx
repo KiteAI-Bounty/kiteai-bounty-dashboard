@@ -17,10 +17,16 @@ type AiAnalysis = {
 
 export function SubmissionForm({
   disabled = false,
+  previousProject = null,
   initialStatus = null,
   initialAnalysis = null,
 }: {
   disabled?: boolean;
+  previousProject?: {
+    name: string;
+    url: string;
+    direction: string;
+  } | null;
   initialStatus?: string | null;
   initialAnalysis?: AiAnalysis | null;
 }) {
@@ -28,7 +34,10 @@ export function SubmissionForm({
   const [links, setLinks] = useState("");
   const [summary, setSummary] = useState("");
   const [direction, setDirection] = useState<string>(
-    contributionDirections[0].value,
+    previousProject?.direction ?? contributionDirections[0].value,
+  );
+  const [reusePreviousProject, setReusePreviousProject] = useState(
+    Boolean(previousProject),
   );
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,6 +95,7 @@ export function SubmissionForm({
             .filter(Boolean),
           summary,
           direction,
+          reusePreviousProject,
         }),
       });
       const result = await response.json();
@@ -117,27 +127,69 @@ export function SubmissionForm({
 
   return (
     <form onSubmit={submit}>
-      <label>
-        项目方向
-        <select
-          value={direction}
-          onChange={(event) => setDirection(event.target.value)}
-          required
-          disabled={disabled || busy}
-        >
-          {contributionDirections.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-        <small className="field-help">
-          {
-            contributionDirections.find((item) => item.value === direction)
-              ?.description
-          }
-        </small>
-      </label>
+      {previousProject && reusePreviousProject ? (
+        <div className="continuation-card">
+          <div>
+            <small>继续上周项目</small>
+            <a href={previousProject.url} target="_blank" rel="noreferrer">
+              {previousProject.name}
+            </a>
+            <p>
+              {
+                contributionDirections.find(
+                  (item) => item.value === previousProject.direction,
+                )?.label
+              }
+              · 本周只需提交新的 Commit 和完成说明
+            </p>
+          </div>
+          <button
+            className="text-link"
+            type="button"
+            disabled={disabled || busy}
+            onClick={() => setReusePreviousProject(false)}
+          >
+            更换项目或方向
+          </button>
+        </div>
+      ) : (
+        <>
+          {previousProject && (
+            <button
+              className="text-link reuse-project-link"
+              type="button"
+              disabled={disabled || busy}
+              onClick={() => {
+                setDirection(previousProject.direction);
+                setReusePreviousProject(true);
+              }}
+            >
+              继续使用上周项目 {previousProject.name}
+            </button>
+          )}
+          <label>
+            项目方向
+            <select
+              value={direction}
+              onChange={(event) => setDirection(event.target.value)}
+              required
+              disabled={disabled || busy}
+            >
+              {contributionDirections.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <small className="field-help">
+              {
+                contributionDirections.find((item) => item.value === direction)
+                  ?.description
+              }
+            </small>
+          </label>
+        </>
+      )}
       <label>
         本周 Commit 链接
         <textarea
