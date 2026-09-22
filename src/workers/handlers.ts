@@ -3,10 +3,41 @@ import { getDb } from "@/lib/db";
 import {
   createEcPullRequest,
   syncEcPullRequest,
+  verifyEcMigration,
   verifyEcRepository,
 } from "@/modules/ec/github-provider";
 import { analyzeContribution } from "@/modules/ai/glm";
 import { getPaymentProvider } from "@/modules/rewards/provider";
+
+async function verifyBatchRepository(
+  repositoryUrl: string,
+  migrationPath: string | null,
+) {
+  const exact = migrationPath
+    ? await verifyEcMigration(repositoryUrl, migrationPath)
+    : null;
+  return exact ?? verifyEcRepository(repositoryUrl);
+}
+
+async function ensureEcSyncJob(batchId: string, currentJobId?: string) {
+  const pending = await getDb().job.findFirst({
+    where: {
+      id: currentJobId ? { not: currentJobId } : undefined,
+      type: "ec.sync_batch",
+      status: { in: ["PENDING", "RUNNING"] },
+      payload: { path: ["batchId"], equals: batchId },
+    },
+  });
+  if (pending) return;
+  await getDb().job.create({
+    data: {
+      type: "ec.sync_batch",
+      key: `ec.sync.batch.${batchId}.${Date.now()}`,
+      payload: { batchId },
+      runAt: new Date(Date.now() + 10 * 60 * 1000),
+    },
+  });
+}
 
 async function completeSubmissionWithRegistration(input: {
   submissionId: string;
@@ -181,8 +212,15 @@ export async function handleJob(job: Pick<Job, "id" | "type" | "payload">) {
       },
     });
     const revision = submission?.revisions[0];
-    if (!submission || !revision || submission.status !== "APPROVED")
-      throw new Error("Submission is not approved or revision is missing");
+    if (!submission || !revision)
+      throw new Error("Submission or revision is missing");
+    // Approval can be withdrawn or superseded after the job was queued. This
+    // is a valid stale job, not a transient failure worth retrying.
+    if (
+      submission.status !== "APPROVED" ||
+      submission.version !== payload.version
+    )
+      return;
     const registration = await getDb().ecRegistration.findUnique({
       where: {
         repositoryId_ecosystem: {
@@ -221,7 +259,10 @@ export async function handleJob(job: Pick<Job, "id" | "type" | "payload">) {
       if (
         env !== "mock" &&
         existing.status === "MERGED" &&
-        (await verifyEcRepository(submission.repository.url))
+        (await verifyBatchRepository(
+          submission.repository.url,
+          existing.migrationPath,
+        ))
       ) {
         const verified = await getDb().ecRegistration.upsert({
           where: {
@@ -251,6 +292,13 @@ export async function handleJob(job: Pick<Job, "id" | "type" | "payload">) {
           weekId: submission.weekId,
           registrationId: verified.id,
         });
+      } else if (
+        existing.prNumber &&
+        ["PR_OPEN", "CHANGES_REQUESTED", "CI_FAILED", "MERGED"].includes(
+          existing.status,
+        )
+      ) {
+        await ensureEcSyncJob(existing.id);
       }
       return;
     }
@@ -353,14 +401,7 @@ export async function handleJob(job: Pick<Job, "id" | "type" | "payload">) {
         },
       });
       if (!result.manual) {
-        await getDb().job.create({
-          data: {
-            type: "ec.sync_batch",
-            key: `ec.sync.batch.${batch.id}.${Date.now()}`,
-            payload: { batchId: batch.id },
-            runAt: new Date(Date.now() + 10 * 60 * 1000),
-          },
-        });
+        await ensureEcSyncJob(batch.id);
       }
     } catch (error) {
       await getDb().ecBatch.update({
@@ -395,7 +436,7 @@ export async function handleJob(job: Pick<Job, "id" | "type" | "payload">) {
           select: { url: true },
         });
         const verified = repository
-          ? await verifyEcRepository(repository.url)
+          ? await verifyBatchRepository(repository.url, batch.migrationPath)
           : false;
         verifiedItems.push({ repositoryId: item.repositoryId, verified });
       }
@@ -513,22 +554,7 @@ export async function handleJob(job: Pick<Job, "id" | "type" | "payload">) {
         validationLog: "EC PR 仍在审核中，系统将继续检查。",
       },
     });
-    const pendingSync = await getDb().job.findFirst({
-      where: {
-        type: "ec.sync_batch",
-        status: { in: ["PENDING", "RUNNING"] },
-        payload: { path: ["batchId"], equals: batch.id },
-      },
-    });
-    if (!pendingSync)
-      await getDb().job.create({
-        data: {
-          type: "ec.sync_batch",
-          key: `ec.sync.batch.${batch.id}.${Date.now()}`,
-          payload: { batchId: batch.id },
-          runAt: new Date(Date.now() + 10 * 60 * 1000),
-        },
-      });
+    await ensureEcSyncJob(batch.id, job.id);
     return;
   }
   if (job.type === "payment.send") {

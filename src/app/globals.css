@@ -644,6 +644,46 @@ code {
 .panel-title .eyebrow {
   margin: 0 0 12px;
 }
+.worker-status-panel .panel-title .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.worker-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.worker-status-grid > div {
+  background: white;
+  padding: 18px 25px;
+}
+.worker-status-grid strong,
+.worker-status-grid span {
+  display: block;
+}
+.worker-status-grid strong {
+  font-size: 21px;
+  font-weight: 550;
+}
+.worker-status-grid span {
+  margin-top: 5px;
+  color: #8a958e;
+  font-size: 10px;
+}
+.worker-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 25px;
+}
+.worker-status-actions .form-message {
+  margin: 0;
+}
 .count {
   font-size: 10px;
   vertical-align: middle;
@@ -2140,6 +2180,17 @@ tbody tr:hover {
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;
     margin-bottom: 20px;
+  }
+  .worker-status-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .worker-status-grid > div {
+    padding: 15px 18px;
+  }
+  .worker-status-actions {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 16px 18px;
   }
   .stat {
     padding: 18px;

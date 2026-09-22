@@ -16,31 +16,36 @@ import { ParticipantImport } from "@/components/participant-import";
 import { AdminReviewQueue } from "@/components/admin-review-queue";
 import { AdminWallets } from "@/components/admin-wallets";
 import { ParticipantList } from "@/components/participant-list";
+import { WorkerStatusPanel } from "@/components/worker-status-panel";
 import { initialCampaign } from "@/modules/campaigns/domain";
+import { getWorkerQueueStatus } from "@/workers/status";
 
 export default async function Admin() {
   if (readEnvironment(process.env).DATA_MODE !== "demo") {
     const user = await getCurrentUser();
     if (!user || user.role !== "ADMIN")
       return <LockedPage title="需要管理员身份" />;
-    const participants = await getDb().participantInvite.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 200,
-    });
-    const reviewSubmissions = await getDb().submission.findMany({
-      orderBy: { submittedAt: "asc" },
-      take: 200,
-      include: {
-        user: { include: { github: true } },
-        week: true,
-        repository: { include: { registrations: true } },
-        revisions: {
-          orderBy: { version: "desc" },
-          take: 1,
-          include: { evidence: true },
+    const [participants, reviewSubmissions, workerStatus] = await Promise.all([
+      getDb().participantInvite.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 200,
+      }),
+      getDb().submission.findMany({
+        orderBy: { submittedAt: "asc" },
+        take: 200,
+        include: {
+          user: { include: { github: true } },
+          week: true,
+          repository: { include: { registrations: true } },
+          revisions: {
+            orderBy: { version: "desc" },
+            take: 1,
+            include: { evidence: true },
+          },
         },
-      },
-    });
+      }),
+      getWorkerQueueStatus(),
+    ]);
     const repositoryIds = [
       ...new Set(reviewSubmissions.map((item) => item.repositoryId)),
     ];
@@ -95,6 +100,7 @@ export default async function Admin() {
           />
         </section>
         <ProcessGuide audience="admin" />
+        <WorkerStatusPanel initial={workerStatus} />
         <div className="admin-management-grid">
           <ParticipantImport />
           <AdminWallets />

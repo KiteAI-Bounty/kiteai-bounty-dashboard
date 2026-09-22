@@ -12,7 +12,7 @@ export async function runNextJob(): Promise<boolean> {
     WHERE "status" = 'RUNNING' AND "lockedUntil" < NOW() AND "attempts" >= "maxAttempts"`;
   const jobs = await db.$queryRaw<Job[]>`
     UPDATE "Job" SET "status" = 'RUNNING', "attempts" = "attempts" + 1,
-      "lockedBy" = ${token}, "lockedUntil" = NOW() + INTERVAL '90 seconds'
+      "lockedBy" = ${token}, "lockedUntil" = NOW() + INTERVAL '120 seconds'
     WHERE "id" = (
       SELECT "id" FROM "Job"
       WHERE (("status" = 'PENDING' AND "runAt" <= NOW())
@@ -22,7 +22,8 @@ export async function runNextJob(): Promise<boolean> {
     ) RETURNING *`;
   const job = jobs[0];
   if (!job) return false;
-  // External handlers use bounded network timeouts shorter than this lease.
+  // Keep the lease longer than the serverless function window. If a function
+  // is terminated, a later invocation can safely reclaim the job.
   try {
     await handleJob(job);
     await db.job.updateMany({

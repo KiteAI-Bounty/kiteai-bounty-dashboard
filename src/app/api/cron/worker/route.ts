@@ -29,10 +29,19 @@ export async function GET(request: Request) {
     );
   const startedAt = Date.now();
   let processed = 0;
-  while (processed < 6 && Date.now() - startedAt < 45_000) {
+  // Process one bounded job per invocation so a slow AI or GitHub call cannot
+  // consume the entire serverless execution window together with later jobs.
+  while (processed < 1 && Date.now() - startedAt < 70_000) {
     if (!(await runNextJob())) break;
     processed += 1;
   }
+  console.log(
+    JSON.stringify({
+      event: "worker.cron.completed",
+      processed,
+      durationMs: Date.now() - startedAt,
+    }),
+  );
   return NextResponse.json(
     { data: { processed, durationMs: Date.now() - startedAt } },
     { headers: { "Cache-Control": "no-store" } },

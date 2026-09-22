@@ -118,3 +118,40 @@ test("EC repository verification follows the latest taxonomy migration", async (
     globalThis.fetch = originalFetch;
   }
 });
+
+test("EC batch verification reads its known migration directly", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.endsWith("/repos/electric-capital/open-dev-data"))
+      return Response.json({ default_branch: "master" });
+    if (url.includes("/contents/migrations/known-entry"))
+      return Response.json({
+        content: Buffer.from(`repadd KiteAI ${repositoryUrl}\n`).toString(
+          "base64",
+        ),
+      });
+    throw new Error(`Unexpected mocked GitHub request: ${url}`);
+  };
+  try {
+    const { verifyEcMigration } =
+      await import("../src/modules/ec/github-provider");
+    assert.equal(
+      await verifyEcMigration(repositoryUrl, "migrations/known-entry"),
+      true,
+    );
+    assert.equal(calls.length, 2);
+    assert.equal(
+      calls.some((call) => call.includes("/search/code")),
+      false,
+    );
+    assert.equal(
+      calls.some((call) => call.includes("/git/trees/")),
+      false,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

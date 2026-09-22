@@ -113,7 +113,7 @@ Vercel 部署使用 `vercel.json` 每分钟请求 `/api/cron/worker`。该路由
 Authorization: Bearer <CRON_SECRET>
 ```
 
-一次请求最多处理六个任务，并在约 45 秒后停止领取新任务。Vercel 中必须配置同一个 `CRON_SECRET`；没有该变量时路由固定返回 401。
+一次请求只领取一个任务，任务租约为 120 秒，避免慢速 GitHub 或 AI 调用拖垮同一次 Serverless 执行。Vercel 中必须配置同一个 `CRON_SECRET`；没有该变量时路由固定返回 401。管理员页面会显示到期、运行中、失败和最老等待时间，并提供一次处理一个任务的手动兜底入口。
 
 ## 5. 页面和接口
 

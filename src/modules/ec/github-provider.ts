@@ -14,6 +14,7 @@ function config() {
 
 async function github(path: string, init?: RequestInit) {
   const token = config().GITHUB_EC_TOKEN!;
+  const timeout = AbortSignal.timeout(10_000);
   const response = await fetch(`https://api.github.com${path}`, {
     ...init,
     headers: {
@@ -24,6 +25,7 @@ async function github(path: string, init?: RequestInit) {
       ...init?.headers,
     },
     cache: "no-store",
+    signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
   });
   if (!response.ok) {
     const body = await response.text();
@@ -32,6 +34,86 @@ async function github(path: string, init?: RequestInit) {
   return response.status === 204
     ? null
     : ((await response.json()) as GithubResponse);
+}
+
+function migrationMatchers(repositoryUrl: string) {
+  const expected = repositoryUrl.replace(/\.git$/, "").replace(/\/$/, "");
+  const escaped = expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return {
+    expected,
+    line: new RegExp(`^repadd\\s+KiteAI\\s+${escaped}(?:\\s|$)`, "mi"),
+    removal: new RegExp(
+      `^(?:repdel|repremove|repdrop)\\s+KiteAI\\s+${escaped}(?:\\s|$)`,
+      "mi",
+    ),
+  };
+}
+
+function decodeGithubContent(file: GithubResponse | null) {
+  if (!file || typeof file.content !== "string") return "";
+  return Buffer.from(
+    String(file.content).replace(/\s/g, ""),
+    "base64",
+  ).toString("utf8");
+}
+
+async function migrationHistory(
+  paths: string[],
+  load: (path: string) => Promise<GithubResponse | null>,
+  line: RegExp,
+  removal: RegExp,
+) {
+  const history: Array<{ path: string; action: "add" | "remove" }> = [];
+  // Keep a small concurrency window: much faster than serial blob reads while
+  // remaining gentle on GitHub's secondary rate limit.
+  for (let index = 0; index < paths.length; index += 5) {
+    const files = await Promise.all(
+      paths.slice(index, index + 5).map(async (path) => ({
+        path,
+        content: decodeGithubContent(await load(path)),
+      })),
+    );
+    for (const file of files) {
+      if (line.test(file.content))
+        history.push({ path: file.path, action: "add" });
+      if (removal.test(file.content))
+        history.push({ path: file.path, action: "remove" });
+    }
+  }
+  return history.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/**
+ * Verify the migration created by this dashboard directly. A merged EC batch
+ * already knows its migration path, so this avoids a repository-wide scan.
+ * `null` means the path could not be checked and the caller should use the
+ * repository fallback for compatibility with rewritten upstream migrations.
+ */
+export async function verifyEcMigration(
+  repositoryUrl: string,
+  migrationPath: string,
+): Promise<boolean | null> {
+  if (!migrationPath.startsWith("migrations/")) return null;
+  const env = config();
+  const upstream = await github(
+    `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}`,
+  );
+  const branch = String(upstream?.default_branch ?? "master");
+  try {
+    const file = await github(
+      `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}/contents/${migrationPath
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/")}?ref=${encodeURIComponent(branch)}`,
+    );
+    const content = decodeGithubContent(file);
+    const { line, removal } = migrationMatchers(repositoryUrl);
+    if (removal.test(content)) return false;
+    if (line.test(content)) return true;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export async function createEcPullRequest(input: {
@@ -159,13 +241,7 @@ export async function verifyEcRepository(repositoryUrl: string) {
     `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}`,
   );
   const branch = String(upstream?.default_branch ?? "master");
-  const expected = repositoryUrl.replace(/\.git$/, "").replace(/\/$/, "");
-  const escaped = expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const line = new RegExp(`^repadd\\s+KiteAI\\s+${escaped}(?:\\s|$)`, "mi");
-  const removal = new RegExp(
-    `^(?:repdel|repremove|repdrop)\\s+KiteAI\\s+${escaped}(?:\\s|$)`,
-    "mi",
-  );
+  const { expected, line, removal } = migrationMatchers(repositoryUrl);
   // Code search covers older migrations without fetching thousands of blobs.
   // A recent-tree fallback below handles GitHub search indexing delay.
   try {
@@ -175,26 +251,26 @@ export async function verifyEcRepository(repositoryUrl: string) {
       { headers: { Accept: "application/vnd.github+json" } },
     );
     const matches = Array.isArray(search?.items) ? search.items : [];
-    const history: Array<{ path: string; action: "add" | "remove" }> = [];
-    for (const match of matches.slice(0, 50)) {
-      if (!match || typeof match !== "object") continue;
-      const path = String((match as { path?: unknown }).path ?? "");
-      if (!path.startsWith("migrations/")) continue;
-      const file = await github(
-        `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}/contents/${path
-          .split("/")
-          .map(encodeURIComponent)
-          .join("/")}?ref=${encodeURIComponent(branch)}`,
-      );
-      if (!file || typeof file.content !== "string") continue;
-      const content = Buffer.from(
-        String(file.content).replace(/\s/g, ""),
-        "base64",
-      ).toString("utf8");
-      if (line.test(content)) history.push({ path, action: "add" });
-      if (removal.test(content)) history.push({ path, action: "remove" });
-    }
-    history.sort((a, b) => a.path.localeCompare(b.path));
+    const paths = matches
+      .slice(0, 50)
+      .map((match) =>
+        match && typeof match === "object"
+          ? String((match as { path?: unknown }).path ?? "")
+          : "",
+      )
+      .filter((path) => path.startsWith("migrations/"));
+    const history = await migrationHistory(
+      paths,
+      (path) =>
+        github(
+          `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}/contents/${path
+            .split("/")
+            .map(encodeURIComponent)
+            .join("/")}?ref=${encodeURIComponent(branch)}`,
+        ),
+      line,
+      removal,
+    );
     if (history.length) return history.at(-1)?.action === "add";
   } catch {
     // Fall through to the bounded recent migration scan.
@@ -216,17 +292,16 @@ export async function verifyEcRepository(repositoryUrl: string) {
       ),
   );
   // Keep verification bounded even while the upstream repository grows.
-  for (const entry of migrationEntries.slice(-300).reverse()) {
-    const blob = await github(
-      `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}/git/blobs/${entry.sha}`,
-    );
-    if (!blob || typeof blob.content !== "string") continue;
-    const content = Buffer.from(
-      String(blob.content).replace(/\s/g, ""),
-      "base64",
-    ).toString("utf8");
-    if (removal.test(content)) return false;
-    if (line.test(content)) return true;
-  }
-  return false;
+  const recent = migrationEntries.slice(-30);
+  const shaByPath = new Map(recent.map((entry) => [entry.path, entry.sha]));
+  const history = await migrationHistory(
+    recent.map((entry) => entry.path),
+    (path) =>
+      github(
+        `/repos/${env.EC_UPSTREAM_OWNER}/${env.EC_UPSTREAM_REPOSITORY}/git/blobs/${shaByPath.get(path)}`,
+      ),
+    line,
+    removal,
+  );
+  return history.length ? history.at(-1)?.action === "add" : false;
 }
