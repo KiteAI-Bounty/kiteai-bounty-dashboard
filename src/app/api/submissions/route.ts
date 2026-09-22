@@ -118,6 +118,19 @@ export async function POST(request: Request) {
     const week = currentWeek(campaign.weeks, new Date());
     if (!week)
       throw new ApiError("WEEK_CLOSED", "当前不在可提交的统计周内。", 409);
+    const currentSubmission = await getDb().submission.findUnique({
+      where: { userId_weekId: { userId: user.userId, weekId: week.id } },
+      select: { status: true },
+    });
+    if (
+      currentSubmission &&
+      currentSubmission.status !== "CHANGES_REQUESTED"
+    )
+      throw new ApiError(
+        "WEEK_ALREADY_SUBMITTED",
+        "本周贡献已经提交，请等待 AI 和管理员审核。只有管理员要求修改后才能重新提交。",
+        409,
+      );
     const commits = body.evidenceUrls.map(parseCommitUrl);
     const unique = new Map(
       commits.map((item) => [`${item.owner}/${item.repo}@${item.sha}`, item]),

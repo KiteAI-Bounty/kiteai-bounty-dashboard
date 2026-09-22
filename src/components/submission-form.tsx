@@ -43,6 +43,10 @@ export function SubmissionForm({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(initialStatus);
   const [analysis, setAnalysis] = useState<AiAnalysis | null>(initialAnalysis);
+  const submissionLocked = Boolean(
+    status && status !== "CHANGES_REQUESTED",
+  );
+  const controlsDisabled = disabled || busy || submissionLocked;
 
   useEffect(() => {
     if (
@@ -127,6 +131,14 @@ export function SubmissionForm({
 
   return (
     <form onSubmit={submit}>
+      <div className="submission-repository-notice" role="note">
+        <strong>请使用自己的项目仓库</strong>
+        <p>
+          请优先提交由本人 GitHub
+          账号拥有的独立公开仓库，不要提交他人的仓库或尚未合并的分支。若向
+          gokite-ai 官方仓库贡献，必须先合并到主分支后再提交对应 Commit。
+        </p>
+      </div>
       {previousProject && reusePreviousProject ? (
         <div className="continuation-card">
           <div>
@@ -146,7 +158,7 @@ export function SubmissionForm({
           <button
             className="text-link"
             type="button"
-            disabled={disabled || busy}
+            disabled={controlsDisabled}
             onClick={() => setReusePreviousProject(false)}
           >
             更换项目或方向
@@ -158,7 +170,7 @@ export function SubmissionForm({
             <button
               className="text-link reuse-project-link"
               type="button"
-              disabled={disabled || busy}
+              disabled={controlsDisabled}
               onClick={() => {
                 setDirection(previousProject.direction);
                 setReusePreviousProject(true);
@@ -173,7 +185,7 @@ export function SubmissionForm({
               value={direction}
               onChange={(event) => setDirection(event.target.value)}
               required
-              disabled={disabled || busy}
+              disabled={controlsDisabled}
             >
               {contributionDirections.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -198,7 +210,7 @@ export function SubmissionForm({
           onChange={(event) => setLinks(event.target.value)}
           placeholder="https://github.com/owner/repository/commit/sha"
           required
-          disabled={disabled || busy}
+          disabled={controlsDisabled}
         />
         <small className="field-help">
           支持提交个人独立开源仓库的 Commit。若向官方组织（如 gokite-ai）贡献，必须在 PR 合并至主分支后方可提交对应 Commit。
@@ -214,7 +226,7 @@ export function SubmissionForm({
           minLength={20}
           maxLength={4000}
           required
-          disabled={disabled || busy}
+          disabled={controlsDisabled}
         />
       </label>
       {message && <p className="form-message">{message}</p>}
@@ -269,11 +281,15 @@ export function SubmissionForm({
                   : status}
         </p>
       )}
-      <button className="button dark" type="submit" disabled={disabled || busy}>
+      <button className="button dark" type="submit" disabled={controlsDisabled}>
         {busy
           ? "提交中…"
           : status === "CHANGES_REQUESTED"
             ? "提交修改版本"
+            : status === "REJECTED"
+              ? "本周提交已关闭"
+              : submissionLocked
+                ? "本周已提交"
             : "提交本周贡献"}
       </button>
     </form>

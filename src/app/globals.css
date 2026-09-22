@@ -1051,6 +1051,23 @@ tbody tr:hover {
   font-size: 12px;
   line-height: 1.8;
 }
+.submission-repository-notice {
+  margin: 0 0 22px;
+  padding: 14px 16px;
+  border: 1px solid #ead8a4;
+  border-radius: 10px;
+  background: #fff9e8;
+  color: #725c1f;
+}
+.submission-repository-notice strong {
+  display: block;
+  font-size: 12px;
+}
+.submission-repository-notice p {
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 1.75;
+}
 .continuation-card {
   display: flex;
   flex-wrap: wrap;
