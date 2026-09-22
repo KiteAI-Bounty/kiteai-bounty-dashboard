@@ -35,12 +35,17 @@ type ReviewItem = {
 export function AdminReviewQueue({
   items,
   aiEnabled,
+  weekNumbers,
 }: {
   items: ReviewItem[];
   aiEnabled: boolean;
+  weekNumbers: number[];
 }) {
   const [queue, setQueue] = useState(items);
-  const [filter, setFilter] = useState("pending");
+  const [filter, setFilter] = useState("all");
+  const [weekFilter, setWeekFilter] = useState(() =>
+    String(Math.max(...items.map((item) => item.week.number), 1)),
+  );
   const [page, setPage] = useState(1);
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -160,6 +165,11 @@ export function AdminReviewQueue({
   }
   const groups = [
     {
+      id: "all",
+      label: "全部状态",
+      match: () => true,
+    },
+    {
       id: "pending",
       label: "待审核",
       match: (item: ReviewItem) =>
@@ -192,7 +202,10 @@ export function AdminReviewQueue({
     },
   ];
   const activeGroup = groups.find((group) => group.id === filter) ?? groups[0];
-  const filteredItems = queue.filter(activeGroup.match);
+  const weekItems = queue.filter(
+    (item) => weekFilter === "all" || item.week.number === Number(weekFilter),
+  );
+  const filteredItems = weekItems.filter(activeGroup.match);
   const pageSize = 20;
   const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const visibleItems = filteredItems.slice(
@@ -215,9 +228,46 @@ export function AdminReviewQueue({
         </div>
       </div>
       {message && <p className="review-message">{message}</p>}
+      <div
+        className="review-tabs review-week-tabs"
+        role="tablist"
+        aria-label="提交周次筛选"
+      >
+        <button
+          className={`review-tab ${weekFilter === "all" ? "active" : ""}`}
+          onClick={() => {
+            setWeekFilter("all");
+            setPage(1);
+          }}
+          role="tab"
+          aria-selected={weekFilter === "all"}
+        >
+          全部周次
+          <span>{queue.length}</span>
+        </button>
+        {weekNumbers.map((weekNumber) => {
+          const count = queue.filter(
+            (item) => item.week.number === weekNumber,
+          ).length;
+          return (
+            <button
+              key={weekNumber}
+              className={`review-tab ${weekFilter === String(weekNumber) ? "active" : ""}`}
+              onClick={() => {
+                setWeekFilter(String(weekNumber));
+                setPage(1);
+              }}
+              role="tab"
+              aria-selected={weekFilter === String(weekNumber)}
+            >
+              第 {weekNumber} 周<span>{count}</span>
+            </button>
+          );
+        })}
+      </div>
       <div className="review-tabs" role="tablist" aria-label="提交状态筛选">
         {groups.map((group) => {
-          const count = queue.filter(group.match).length;
+          const count = weekItems.filter(group.match).length;
           return (
             <button
               key={group.id}
@@ -259,6 +309,15 @@ export function AdminReviewQueue({
         </div>
       )}
       <div className="review-table-wrap">
+        <div className="review-week-summary">
+          <strong>
+            {weekFilter === "all" ? "全部周次" : `第 ${weekFilter} 周`}
+          </strong>
+          <span>
+            当前筛选 {filteredItems.length} 条 · 所选周次共 {weekItems.length}{" "}
+            条
+          </span>
+        </div>
         <div className="review-table review-table-head">
           <span>参与者</span>
           <span>仓库 / Commit</span>

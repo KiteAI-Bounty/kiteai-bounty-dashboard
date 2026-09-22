@@ -1578,6 +1578,14 @@ tbody tr:hover {
   padding: 0 25px 16px;
   border-bottom: 1px solid var(--line);
 }
+.review-week-tabs {
+  padding-top: 16px;
+  padding-bottom: 10px;
+  border-bottom: 0;
+}
+.review-week-tabs + .review-tabs {
+  padding-top: 0;
+}
 .review-tab {
   display: inline-flex;
   align-items: center;
@@ -1605,6 +1613,20 @@ tbody tr:hover {
 .review-table-wrap {
   padding: 0 25px 25px;
   overflow-x: auto;
+}
+.review-week-summary {
+  min-width: 760px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 2px 4px;
+  color: #64736a;
+  font-size: 11px;
+}
+.review-week-summary strong {
+  color: #263d2e;
+  font-size: 13px;
 }
 .review-table {
   min-width: 760px;

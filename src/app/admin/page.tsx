@@ -16,6 +16,7 @@ import { ParticipantImport } from "@/components/participant-import";
 import { AdminReviewQueue } from "@/components/admin-review-queue";
 import { AdminWallets } from "@/components/admin-wallets";
 import { ParticipantList } from "@/components/participant-list";
+import { initialCampaign } from "@/modules/campaigns/domain";
 
 export default async function Admin() {
   if (readEnvironment(process.env).DATA_MODE !== "demo") {
@@ -100,6 +101,7 @@ export default async function Admin() {
         </div>
         <AdminReviewQueue
           aiEnabled={Boolean(process.env.GLM_API_KEY)}
+          weekNumbers={initialCampaign.weeks.map((week) => week.number)}
           items={reviewSubmissions.flatMap((item) => {
             const revision = item.revisions[0];
             const ecBatch = ecBatches.find((batch) =>
