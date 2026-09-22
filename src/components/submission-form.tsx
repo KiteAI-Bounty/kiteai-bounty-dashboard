@@ -18,6 +18,9 @@ type AiAnalysis = {
 export function SubmissionForm({
   disabled = false,
   previousProject = null,
+  targetWeekId,
+  initialDirection,
+  correctionNote,
   initialStatus = null,
   initialAnalysis = null,
 }: {
@@ -27,6 +30,9 @@ export function SubmissionForm({
     url: string;
     direction: string;
   } | null;
+  targetWeekId?: string;
+  initialDirection?: string | null;
+  correctionNote?: string | null;
   initialStatus?: string | null;
   initialAnalysis?: AiAnalysis | null;
 }) {
@@ -34,7 +40,9 @@ export function SubmissionForm({
   const [links, setLinks] = useState("");
   const [summary, setSummary] = useState("");
   const [direction, setDirection] = useState<string>(
-    previousProject?.direction ?? contributionDirections[0].value,
+    previousProject?.direction ??
+      initialDirection ??
+      contributionDirections[0].value,
   );
   const [reusePreviousProject, setReusePreviousProject] = useState(
     Boolean(previousProject),
@@ -43,9 +51,7 @@ export function SubmissionForm({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(initialStatus);
   const [analysis, setAnalysis] = useState<AiAnalysis | null>(initialAnalysis);
-  const submissionLocked = Boolean(
-    status && status !== "CHANGES_REQUESTED",
-  );
+  const submissionLocked = Boolean(status && status !== "CHANGES_REQUESTED");
   const controlsDisabled = disabled || busy || submissionLocked;
 
   useEffect(() => {
@@ -60,7 +66,10 @@ export function SubmissionForm({
     const timer = window.setInterval(async () => {
       attempts += 1;
       try {
-        const response = await fetch("/api/submissions", {
+        const query = targetWeekId
+          ? `?weekId=${encodeURIComponent(targetWeekId)}`
+          : "";
+        const response = await fetch(`/api/submissions${query}`, {
           credentials: "same-origin",
           cache: "no-store",
         });
@@ -82,7 +91,7 @@ export function SubmissionForm({
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [analysis, status]);
+  }, [analysis, status, targetWeekId]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -98,6 +107,7 @@ export function SubmissionForm({
             .map((item) => item.trim())
             .filter(Boolean),
           summary,
+          targetWeekId,
           direction,
           reusePreviousProject,
         }),
@@ -139,6 +149,15 @@ export function SubmissionForm({
           gokite-ai 官方仓库贡献，必须先合并到主分支后再提交对应 Commit。
         </p>
       </div>
+      {status === "CHANGES_REQUESTED" && (
+        <div className="submission-ai warning" role="status">
+          <strong>管理员要求修改本次提交</strong>
+          <p>
+            {correctionNote ??
+              "请重新提交该统计周内的有效 Commit 链接和完整完成说明。"}
+          </p>
+        </div>
+      )}
       {previousProject && reusePreviousProject ? (
         <div className="continuation-card">
           <div>
@@ -213,7 +232,8 @@ export function SubmissionForm({
           disabled={controlsDisabled}
         />
         <small className="field-help">
-          支持提交个人独立开源仓库的 Commit。若向官方组织（如 gokite-ai）贡献，必须在 PR 合并至主分支后方可提交对应 Commit。
+          支持提交个人独立开源仓库的 Commit。若向官方组织（如
+          gokite-ai）贡献，必须在 PR 合并至主分支后方可提交对应 Commit。
         </small>
       </label>
       <label>
@@ -290,7 +310,7 @@ export function SubmissionForm({
               ? "本周提交已关闭"
               : submissionLocked
                 ? "本周已提交"
-            : "提交本周贡献"}
+                : "提交本周贡献"}
       </button>
     </form>
   );

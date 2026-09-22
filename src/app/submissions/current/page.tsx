@@ -31,22 +31,41 @@ export default async function SubmissionPage() {
         </section>
       );
     const progress = await getUserProgress(user.userId);
-    const week = currentWeek(progress.campaign.weeks, new Date(progress.now));
-    const currentSubmission = week
-      ? progress.submissions.find((submission) => submission.weekId === week.id)
-      : null;
+    const activeWeek = currentWeek(
+      progress.campaign.weeks,
+      new Date(progress.now),
+    );
     const weekStartById = new Map(
       progress.campaign.weeks.map((item) => [
         item.id,
         Date.parse(item.startsAt),
       ]),
     );
+    const correctionSubmission = progress.submissions
+      .filter((submission) => submission.status === "CHANGES_REQUESTED")
+      .sort(
+        (a, b) =>
+          (weekStartById.get(b.weekId) ?? 0) -
+          (weekStartById.get(a.weekId) ?? 0),
+      )[0];
+    const week = correctionSubmission
+      ? (progress.campaign.weeks.find(
+          (item) => item.id === correctionSubmission.weekId,
+        ) ?? null)
+      : activeWeek;
+    const currentSubmission =
+      correctionSubmission ??
+      (week
+        ? progress.submissions.find(
+            (submission) => submission.weekId === week.id,
+          )
+        : null);
     const previousSubmission = week
       ? progress.submissions
           .filter(
             (submission) =>
-              (weekStartById.get(submission.weekId) ?? Number.POSITIVE_INFINITY) <
-              Date.parse(week.startsAt),
+              (weekStartById.get(submission.weekId) ??
+                Number.POSITIVE_INFINITY) < Date.parse(week.startsAt),
           )
           .sort(
             (a, b) =>
@@ -60,6 +79,8 @@ export default async function SubmissionPage() {
     return (
       <SubmissionPageContent
         week={week ?? null}
+        isCorrection={Boolean(correctionSubmission)}
+        targetWeekId={week?.id}
         previousProject={
           previousSubmission
             ? {
@@ -70,6 +91,8 @@ export default async function SubmissionPage() {
             : null
         }
         status={currentSubmission?.status ?? null}
+        direction={currentSubmission?.direction ?? null}
+        correctionNote={revision?.reviews[0]?.note ?? null}
         analysis={
           revision
             ? {
@@ -97,6 +120,10 @@ export default async function SubmissionPage() {
 function SubmissionPageContent({
   week,
   previousProject = null,
+  isCorrection = false,
+  targetWeekId,
+  direction = null,
+  correctionNote = null,
   status = null,
   analysis = null,
 }: {
@@ -106,6 +133,10 @@ function SubmissionPageContent({
     url: string;
     direction: string;
   } | null;
+  isCorrection?: boolean;
+  targetWeekId?: string;
+  direction?: string | null;
+  correctionNote?: string | null;
   status?: string | null;
   analysis?: {
     scope: string | null;
@@ -131,14 +162,16 @@ function SubmissionPageContent({
         <section className="panel form-panel">
           <div className="panel-title">
             <div>
-              <h2>本周贡献</h2>
+              <h2>{isCorrection ? "修改历史提交" : "本周贡献"}</h2>
               <p>
                 {week
                   ? `第 ${week.number} 周 · ${weekLabel(week)} · 北京时间`
                   : "当前不在可提交的统计周内"}
               </p>
               <p className="submission-hint">
-                请提交本周有效 Commit
+                {isCorrection
+                  ? "请重新提交该周有效 Commit"
+                  : "请提交本周有效 Commit"}
                 链接（每行一条）。系统将自动识别关联仓库；请简要说明代码变更及其与
                 KiteAI 的关联。
               </p>
@@ -151,7 +184,10 @@ function SubmissionPageContent({
             </fieldset>
           ) : (
             <SubmissionForm
-              previousProject={previousProject}
+              previousProject={isCorrection ? null : previousProject}
+              targetWeekId={targetWeekId}
+              initialDirection={direction}
+              correctionNote={correctionNote}
               initialStatus={status}
               initialAnalysis={analysis}
             />

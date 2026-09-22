@@ -9,6 +9,7 @@ import { contributionDirections } from "@/modules/directions/catalog";
 const input = z.object({
   evidenceUrls: z.array(z.url()).min(1).max(20),
   summary: z.string().trim().min(20).max(4000),
+  targetWeekId: z.string().min(1).optional(),
   reusePreviousProject: z.boolean().default(false),
   direction: z
     .enum(
@@ -50,7 +51,7 @@ function parseCommitUrl(value: string) {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     requireDatabaseMode();
     const user = await requireUser();
@@ -61,7 +62,10 @@ export async function GET() {
         403,
       );
     const { campaign } = await getCampaignWorkspace();
-    const week = currentWeek(campaign.weeks, new Date());
+    const requestedWeekId = new URL(request.url).searchParams.get("weekId");
+    const week = requestedWeekId
+      ? campaign.weeks.find((item) => item.id === requestedWeekId)
+      : currentWeek(campaign.weeks, new Date());
     if (!week) return ok(null);
     const submission = await getDb().submission.findUnique({
       where: { userId_weekId: { userId: user.userId, weekId: week.id } },
@@ -115,7 +119,13 @@ export async function POST(request: Request) {
       throw new ApiError("GITHUB_REQUIRED", "请先绑定 GitHub。", 409);
     const body = input.parse(await request.json());
     const { campaign } = await getCampaignWorkspace();
-    const week = currentWeek(campaign.weeks, new Date());
+    const activeWeek = currentWeek(campaign.weeks, new Date());
+    const requestedWeek = body.targetWeekId
+      ? campaign.weeks.find((item) => item.id === body.targetWeekId)
+      : null;
+    if (body.targetWeekId && !requestedWeek)
+      throw new ApiError("WEEK_INVALID", "指定的统计周不存在。", 400);
+    const week = requestedWeek ?? activeWeek;
     if (!week)
       throw new ApiError("WEEK_CLOSED", "当前不在可提交的统计周内。", 409);
     const currentSubmission = await getDb().submission.findUnique({
@@ -123,9 +133,15 @@ export async function POST(request: Request) {
       select: { status: true },
     });
     if (
-      currentSubmission &&
-      currentSubmission.status !== "CHANGES_REQUESTED"
+      week.id !== activeWeek?.id &&
+      currentSubmission?.status !== "CHANGES_REQUESTED"
     )
+      throw new ApiError(
+        "PAST_WEEK_NOT_EDITABLE",
+        "历史周仅可在管理员要求修改后重新提交。",
+        409,
+      );
+    if (currentSubmission && currentSubmission.status !== "CHANGES_REQUESTED")
       throw new ApiError(
         "WEEK_ALREADY_SUBMITTED",
         "本周贡献已经提交，请等待 AI 和管理员审核。只有管理员要求修改后才能重新提交。",
@@ -241,8 +257,7 @@ export async function POST(request: Request) {
       );
     const isOwner =
       first.commit.owner.toLowerCase() === user.github.login.toLowerCase();
-    const isOfficial =
-      first.commit.owner.toLowerCase() === "gokite-ai";
+    const isOfficial = first.commit.owner.toLowerCase() === "gokite-ai";
     const defaultBranch = repoData.default_branch ?? "main";
 
     if (!isOwner || isOfficial) {

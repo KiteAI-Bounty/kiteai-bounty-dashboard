@@ -115,6 +115,9 @@ export async function getUserProgress(userId: string) {
         revisions: {
           orderBy: { version: "desc" },
           take: 1,
+          include: {
+            reviews: { orderBy: { createdAt: "desc" }, take: 1 },
+          },
         },
       },
     }),
