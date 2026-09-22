@@ -170,7 +170,7 @@ function SubmissionPageContent({
               </p>
               <p className="submission-hint">
                 {isCorrection
-                  ? "请重新提交该周有效 Commit"
+                  ? "请提交原统计周内的 Commit，或按审核意见修改后产生的新 Commit"
                   : "请提交本周有效 Commit"}
                 链接（每行一条）。系统将自动识别关联仓库；请简要说明代码变更及其与
                 KiteAI 的关联。
@@ -199,7 +199,11 @@ function SubmissionPageContent({
           <ul>
             <li>仓库公开可访问</li>
             <li>代码作者与绑定的 GitHub 身份一致</li>
-            <li>贡献发生在本周统计范围内</li>
+            <li>
+              {isCorrection
+                ? "原周贡献，或要求修改后产生的修复 Commit"
+                : "贡献发生在本周统计范围内"}
+            </li>
             <li>包含有意义的原创代码及 KiteAI 集成</li>
           </ul>
           <div className="divider" />

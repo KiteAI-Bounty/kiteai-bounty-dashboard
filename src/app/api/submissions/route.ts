@@ -5,6 +5,7 @@ import { getCampaignWorkspace } from "@/modules/campaigns/service";
 import { currentWeek } from "@/modules/campaigns/domain";
 import { z } from "zod";
 import { contributionDirections } from "@/modules/directions/catalog";
+import { commitFitsSubmissionWindow } from "@/modules/submissions/policy";
 
 const input = z.object({
   evidenceUrls: z.array(z.url()).min(1).max(20),
@@ -130,7 +131,22 @@ export async function POST(request: Request) {
       throw new ApiError("WEEK_CLOSED", "当前不在可提交的统计周内。", 409);
     const currentSubmission = await getDb().submission.findUnique({
       where: { userId_weekId: { userId: user.userId, weekId: week.id } },
-      select: { status: true },
+      select: {
+        id: true,
+        status: true,
+        revisions: {
+          orderBy: { version: "desc" },
+          take: 1,
+          select: {
+            reviews: {
+              where: { decision: "CHANGES_REQUESTED" },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { createdAt: true },
+            },
+          },
+        },
+      },
     });
     if (
       week.id !== activeWeek?.id &&
@@ -147,6 +163,10 @@ export async function POST(request: Request) {
         "本周贡献已经提交，请等待 AI 和管理员审核。只有管理员要求修改后才能重新提交。",
         409,
       );
+    const correctionRequestedAt =
+      currentSubmission?.status === "CHANGES_REQUESTED"
+        ? (currentSubmission.revisions[0]?.reviews[0]?.createdAt ?? null)
+        : null;
     const commits = body.evidenceUrls.map(parseCommitUrl);
     const unique = new Map(
       commits.map((item) => [`${item.owner}/${item.repo}@${item.sha}`, item]),
@@ -203,14 +223,21 @@ export async function POST(request: Request) {
       if ((data.stats?.additions ?? 0) + (data.stats?.deletions ?? 0) <= 0)
         throw new ApiError("NO_CODE_CHANGE", "Commit 未检测到代码变更。", 400);
       const authoredAt = new Date(data.commit?.author?.date ?? 0);
+      const committedAt = new Date(data.commit?.committer?.date ?? 0);
       if (
-        !Number.isFinite(authoredAt.getTime()) ||
-        authoredAt < new Date(week.startsAt) ||
-        authoredAt >= new Date(week.endsAt)
+        !commitFitsSubmissionWindow({
+          authoredAt,
+          committedAt,
+          weekStartsAt: new Date(week.startsAt),
+          weekEndsAt: new Date(week.endsAt),
+          correctionRequestedAt,
+        })
       )
         throw new ApiError(
           "COMMIT_OUT_OF_RANGE",
-          "Commit 不属于当前统计周。",
+          correctionRequestedAt
+            ? "Commit 必须属于原统计周，或创建于管理员要求修改之后。"
+            : "Commit 不属于当前统计周。",
           400,
         );
       evidence.push({
