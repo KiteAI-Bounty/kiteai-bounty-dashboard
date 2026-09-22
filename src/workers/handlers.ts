@@ -401,6 +401,7 @@ export async function handleJob(job: Pick<Job, "id" | "type" | "payload">) {
       }
       await getDb().$transaction(async (tx) => {
         const mergedAt = new Date(state.mergedAt!);
+        const allVerified = verifiedItems.every((item) => item.verified);
         await tx.ecBatch.update({
           where: { id: batch.id },
           data: {
@@ -408,7 +409,9 @@ export async function handleJob(job: Pick<Job, "id" | "type" | "payload">) {
             mergedAt,
             syncedAt: new Date(),
             headSha: state.headSha,
-            validationLog: "EC PR 已合并，正在核验上游数据记录。",
+            validationLog: allVerified
+              ? "EC PR 已合并，上游数据记录已核验。"
+              : "EC PR 已合并，正在核验上游数据记录。",
           },
         });
         for (const item of batch.items) {
@@ -430,6 +433,15 @@ export async function handleJob(job: Pick<Job, "id" | "type" | "payload">) {
             });
             continue;
           }
+          await tx.ecBatchItem.update({
+            where: {
+              batchId_repositoryId: {
+                batchId: batch.id,
+                repositoryId: item.repositoryId,
+              },
+            },
+            data: { verifiedAt: mergedAt, failure: null },
+          });
           const registration = await tx.ecRegistration.upsert({
             where: {
               repositoryId_ecosystem: {
