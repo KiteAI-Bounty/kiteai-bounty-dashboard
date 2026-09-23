@@ -23,6 +23,8 @@ export function SubmissionForm({
   correctionNote,
   initialStatus = null,
   initialAnalysis = null,
+  weekNumber,
+  isBackfill = false,
 }: {
   disabled?: boolean;
   previousProject?: {
@@ -35,6 +37,8 @@ export function SubmissionForm({
   correctionNote?: string | null;
   initialStatus?: string | null;
   initialAnalysis?: AiAnalysis | null;
+  weekNumber?: number;
+  isBackfill?: boolean;
 }) {
   const router = useRouter();
   const [links, setLinks] = useState("");
@@ -222,7 +226,9 @@ export function SubmissionForm({
         </>
       )}
       <label>
-        本周 Commit 链接
+        {isBackfill
+          ? `第 ${weekNumber ?? 1} 周 Commit 链接`
+          : "本周 Commit 链接"}
         <textarea
           rows={4}
           value={links}
@@ -237,7 +243,7 @@ export function SubmissionForm({
         </small>
       </label>
       <label>
-        本周完成说明
+        {isBackfill ? `第 ${weekNumber ?? 1} 周完成说明` : "本周完成说明"}
         <textarea
           rows={4}
           value={summary}
@@ -310,7 +316,9 @@ export function SubmissionForm({
               ? "本周提交已关闭"
               : submissionLocked
                 ? "本周已提交"
-                : "提交本周贡献"}
+                : isBackfill
+                  ? `补交第 ${weekNumber ?? 1} 周贡献`
+                  : "提交本周贡献"}
       </button>
     </form>
   );

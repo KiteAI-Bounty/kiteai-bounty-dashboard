@@ -8,7 +8,10 @@ import {
   emptyWeekStatus,
 } from "../src/modules/campaigns/domain";
 import { submissionInput } from "../src/modules/submissions/contracts";
-import { commitFitsSubmissionWindow } from "../src/modules/submissions/policy";
+import {
+  canCreateFirstWeekBackfill,
+  commitFitsSubmissionWindow,
+} from "../src/modules/submissions/policy";
 import { handleJob } from "../src/workers/handlers";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -127,6 +130,37 @@ test("requested corrections accept new fixes without opening ordinary late submi
       correctionRequestedAt: new Date("2026-09-22T09:00:00Z"),
       authoredAt: new Date("2026-09-22T08:00:00Z"),
       committedAt: new Date("2026-09-22T08:00:00Z"),
+    }),
+    false,
+  );
+});
+test("only a missing, closed first week can be backfilled", () => {
+  const base = {
+    weekNumber: 1,
+    weekEndsAt: new Date("2026-09-20T16:00:00Z"),
+    now: new Date("2026-09-23T04:00:00Z"),
+  };
+  assert.equal(
+    canCreateFirstWeekBackfill({ ...base, hasSubmission: false }),
+    true,
+  );
+  assert.equal(
+    canCreateFirstWeekBackfill({ ...base, hasSubmission: true }),
+    false,
+  );
+  assert.equal(
+    canCreateFirstWeekBackfill({
+      ...base,
+      weekNumber: 2,
+      hasSubmission: false,
+    }),
+    false,
+  );
+  assert.equal(
+    canCreateFirstWeekBackfill({
+      ...base,
+      hasSubmission: false,
+      now: new Date("2026-09-20T15:59:59Z"),
     }),
     false,
   );

@@ -1,4 +1,4 @@
-import { Github, Info } from "lucide-react";
+import { CalendarClock, Github, Info } from "lucide-react";
 import { PageTitle, DemoNote, LockedPage } from "@/components/ui";
 import { SubmissionForm } from "@/components/submission-form";
 import { readEnvironment } from "@/config/env";
@@ -9,8 +9,13 @@ import {
 } from "@/modules/campaigns/service";
 import { currentWeek, weekLabel, type Week } from "@/modules/campaigns/domain";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
-export default async function SubmissionPage() {
+export default async function SubmissionPage({
+  searchParams,
+}: PageProps<"/submissions/current">) {
+  const query = await searchParams;
+  const requestedWeek = Array.isArray(query.week) ? query.week[0] : query.week;
   const demo = readEnvironment(process.env).DATA_MODE === "demo";
   if (!demo) {
     const user = await getCurrentUser();
@@ -35,6 +40,18 @@ export default async function SubmissionPage() {
       progress.campaign.weeks,
       new Date(progress.now),
     );
+    const firstWeek = progress.campaign.weeks.find((item) => item.number === 1);
+    const firstWeekSubmission = firstWeek
+      ? progress.submissions.find(
+          (submission) => submission.weekId === firstWeek.id,
+        )
+      : undefined;
+    const canBackfillFirstWeek = Boolean(
+      firstWeek &&
+      !firstWeekSubmission &&
+      new Date(progress.now).getTime() >= Date.parse(firstWeek.endsAt),
+    );
+    const isFirstWeekBackfill = requestedWeek === "1" && canBackfillFirstWeek;
     const weekStartById = new Map(
       progress.campaign.weeks.map((item) => [
         item.id,
@@ -48,13 +65,15 @@ export default async function SubmissionPage() {
           (weekStartById.get(b.weekId) ?? 0) -
           (weekStartById.get(a.weekId) ?? 0),
       )[0];
-    const week = correctionSubmission
-      ? (progress.campaign.weeks.find(
-          (item) => item.id === correctionSubmission.weekId,
-        ) ?? null)
-      : activeWeek;
+    const week = isFirstWeekBackfill
+      ? (firstWeek ?? null)
+      : correctionSubmission
+        ? (progress.campaign.weeks.find(
+            (item) => item.id === correctionSubmission.weekId,
+          ) ?? null)
+        : activeWeek;
     const currentSubmission =
-      correctionSubmission ??
+      (isFirstWeekBackfill ? null : correctionSubmission) ??
       (week
         ? progress.submissions.find(
             (submission) => submission.weekId === week.id,
@@ -79,7 +98,9 @@ export default async function SubmissionPage() {
     return (
       <SubmissionPageContent
         week={week ?? null}
-        isCorrection={Boolean(correctionSubmission)}
+        isCorrection={Boolean(correctionSubmission) && !isFirstWeekBackfill}
+        isFirstWeekBackfill={isFirstWeekBackfill}
+        canBackfillFirstWeek={canBackfillFirstWeek}
         targetWeekId={week?.id}
         previousProject={
           previousSubmission
@@ -121,6 +142,8 @@ function SubmissionPageContent({
   week,
   previousProject = null,
   isCorrection = false,
+  isFirstWeekBackfill = false,
+  canBackfillFirstWeek = false,
   targetWeekId,
   direction = null,
   correctionNote = null,
@@ -134,6 +157,8 @@ function SubmissionPageContent({
     direction: string;
   } | null;
   isCorrection?: boolean;
+  isFirstWeekBackfill?: boolean;
+  canBackfillFirstWeek?: boolean;
   targetWeekId?: string;
   direction?: string | null;
   correctionNote?: string | null;
@@ -158,11 +183,42 @@ function SubmissionPageContent({
         description="每周一份提交。已登记仓库仍需提供本周新的原创代码。"
       />
       {demo && <DemoNote />}
+      {canBackfillFirstWeek && !isFirstWeekBackfill && (
+        <section className="catchup-notice" aria-label="第 1 周补交入口">
+          <CalendarClock size={22} />
+          <div>
+            <strong>你还没有提交第 1 周贡献</strong>
+            <p>
+              现在可以补交第 1 周的原创代码；Commit 必须产生于第 1
+              周统计范围内。
+            </p>
+          </div>
+          <Link
+            className="button dark compact"
+            href="/submissions/current?week=1"
+          >
+            补交第 1 周
+          </Link>
+        </section>
+      )}
+      {isFirstWeekBackfill && (
+        <div className="catchup-return">
+          <Link className="text-link" href="/submissions/current">
+            返回本周提交
+          </Link>
+        </div>
+      )}
       <div className="form-layout">
         <section className="panel form-panel">
           <div className="panel-title">
             <div>
-              <h2>{isCorrection ? "修改历史提交" : "本周贡献"}</h2>
+              <h2>
+                {isCorrection
+                  ? "修改历史提交"
+                  : isFirstWeekBackfill
+                    ? "补交第 1 周贡献"
+                    : "本周贡献"}
+              </h2>
               <p>
                 {week
                   ? `第 ${week.number} 周 · ${weekLabel(week)} · 北京时间`
@@ -171,7 +227,9 @@ function SubmissionPageContent({
               <p className="submission-hint">
                 {isCorrection
                   ? "请提交原统计周内的 Commit，或按审核意见修改后产生的新 Commit"
-                  : "请提交本周有效 Commit"}
+                  : isFirstWeekBackfill
+                    ? "请提交第 1 周统计范围内的有效 Commit"
+                    : "请提交本周有效 Commit"}
                 链接（每行一条）。系统将自动识别关联仓库；请简要说明代码变更及其与
                 KiteAI 的关联。
               </p>
@@ -190,6 +248,8 @@ function SubmissionPageContent({
               correctionNote={correctionNote}
               initialStatus={status}
               initialAnalysis={analysis}
+              weekNumber={week?.number}
+              isBackfill={isFirstWeekBackfill}
             />
           )}
         </section>
@@ -202,7 +262,9 @@ function SubmissionPageContent({
             <li>
               {isCorrection
                 ? "原周贡献，或要求修改后产生的修复 Commit"
-                : "贡献发生在本周统计范围内"}
+                : isFirstWeekBackfill
+                  ? "贡献发生在第 1 周统计范围内"
+                  : "贡献发生在本周统计范围内"}
             </li>
             <li>包含有意义的原创代码及 KiteAI 集成</li>
           </ul>

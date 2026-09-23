@@ -24,3 +24,16 @@ export function commitFitsSubmissionWindow(input: {
     latestCommitTime <= now + clockSkewAllowance
   );
 }
+
+export function canCreateFirstWeekBackfill(input: {
+  weekNumber: number;
+  weekEndsAt: Date;
+  hasSubmission: boolean;
+  now?: Date;
+}) {
+  return (
+    input.weekNumber === 1 &&
+    !input.hasSubmission &&
+    (input.now ?? new Date()).getTime() >= input.weekEndsAt.getTime()
+  );
+}

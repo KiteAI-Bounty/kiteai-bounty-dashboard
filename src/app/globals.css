@@ -1065,6 +1065,31 @@ tbody tr:hover {
   grid-template-columns: 1.7fr 1fr;
   gap: 24px;
 }
+.catchup-notice {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  border: 1px solid #d7e4d7;
+  border-radius: 12px;
+  background: #f4f8f1;
+  color: #315f43;
+}
+.catchup-notice strong {
+  display: block;
+  font-size: 13px;
+}
+.catchup-notice p {
+  margin-top: 4px;
+  color: #6d7d72;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.catchup-return {
+  margin: 0 0 16px;
+}
 .form-panel fieldset {
   border: 0;
   margin: 0;
@@ -2120,6 +2145,13 @@ tbody tr:hover {
   }
 }
 @media (max-width: 580px) {
+  .catchup-notice {
+    grid-template-columns: auto 1fr;
+  }
+  .catchup-notice .button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
   .main {
     padding: 8px 16px 40px;
   }

@@ -5,7 +5,10 @@ import { getCampaignWorkspace } from "@/modules/campaigns/service";
 import { currentWeek } from "@/modules/campaigns/domain";
 import { z } from "zod";
 import { contributionDirections } from "@/modules/directions/catalog";
-import { commitFitsSubmissionWindow } from "@/modules/submissions/policy";
+import {
+  canCreateFirstWeekBackfill,
+  commitFitsSubmissionWindow,
+} from "@/modules/submissions/policy";
 
 const input = z.object({
   evidenceUrls: z.array(z.url()).min(1).max(20),
@@ -148,13 +151,19 @@ export async function POST(request: Request) {
         },
       },
     });
+    const isFirstWeekBackfill = canCreateFirstWeekBackfill({
+      weekNumber: week.number,
+      weekEndsAt: new Date(week.endsAt),
+      hasSubmission: Boolean(currentSubmission),
+    });
     if (
       week.id !== activeWeek?.id &&
-      currentSubmission?.status !== "CHANGES_REQUESTED"
+      currentSubmission?.status !== "CHANGES_REQUESTED" &&
+      !isFirstWeekBackfill
     )
       throw new ApiError(
         "PAST_WEEK_NOT_EDITABLE",
-        "历史周仅可在管理员要求修改后重新提交。",
+        "历史周仅可补交尚未提交的第 1 周，或在管理员要求修改后重新提交。",
         409,
       );
     if (currentSubmission && currentSubmission.status !== "CHANGES_REQUESTED")
