@@ -1183,11 +1183,37 @@ tbody tr:hover {
   font-size: 10px;
   line-height: 1.7;
 }
-.form-message {
-  margin: -4px 0 16px;
-  color: #627b68;
-  font-size: 11px;
-  line-height: 1.7;
+.form-notice {
+  margin: -4px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.65;
+  outline: none;
+}
+.form-notice strong,
+.form-notice p,
+.form-notice small {
+  display: block;
+}
+.form-notice p {
+  margin-top: 4px;
+}
+.form-notice small {
+  margin-top: 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  opacity: 0.82;
+}
+.form-notice.error {
+  border-color: #efb6b2;
+  background: #fff1f0;
+  color: #9f2921;
+}
+.form-notice.success {
+  border-color: #b8d8bf;
+  background: #eef8f0;
+  color: #326a40;
 }
 .submission-status {
   margin: -2px 0 14px;

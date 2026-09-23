@@ -22,6 +22,7 @@ import {
   verifyWalletSignature,
 } from "../src/modules/auth/crypto";
 import { parseParticipantCsv } from "../src/modules/auth/invitation-contracts";
+import { validateSubmissionDraft } from "../src/modules/submissions/client-validation";
 
 test("production rejects demo, testnet and payment activation", () => {
   const base = {
@@ -90,6 +91,47 @@ test("contribution URL validation rejects lookalike hosts and embedded credentia
       evidenceUrls: ["https://github.com/example/repo/commit/abc"],
     }).success,
     true,
+  );
+});
+
+test("submission draft validation explains common form errors", () => {
+  assert.equal(
+    validateSubmissionDraft({
+      evidenceUrls: [],
+      summary: "valid summary with enough content",
+    })?.code,
+    "EVIDENCE_REQUIRED",
+  );
+  assert.equal(
+    validateSubmissionDraft({
+      evidenceUrls: ["https://github.com/example/repo/pull/1"],
+      summary: "valid summary with enough content",
+    })?.code,
+    "EVIDENCE_INVALID",
+  );
+  assert.equal(
+    validateSubmissionDraft({
+      evidenceUrls: [
+        "https://github.com/example/one/commit/abcdef1",
+        "https://github.com/example/two/commit/abcdef2",
+      ],
+      summary: "valid summary with enough content",
+    })?.code,
+    "MULTIPLE_REPOSITORIES",
+  );
+  assert.equal(
+    validateSubmissionDraft({
+      evidenceUrls: ["https://github.com/example/repo/commit/abcdef1"],
+      summary: "too short",
+    })?.code,
+    "SUMMARY_INVALID",
+  );
+  assert.equal(
+    validateSubmissionDraft({
+      evidenceUrls: ["https://github.com/example/repo/commit/abcdef1"],
+      summary: "A meaningful weekly contribution summary.",
+    }),
+    null,
   );
 });
 

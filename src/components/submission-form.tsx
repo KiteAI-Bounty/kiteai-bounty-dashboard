@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { contributionDirections } from "@/modules/directions/catalog";
+import { validateSubmissionDraft } from "@/modules/submissions/client-validation";
+
+type SubmissionNotice = {
+  kind: "success" | "error";
+  message: string;
+  code?: string;
+};
 
 type AiAnalysis = {
   scope: string | null;
@@ -51,12 +58,19 @@ export function SubmissionForm({
   const [reusePreviousProject, setReusePreviousProject] = useState(
     Boolean(previousProject),
   );
-  const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState<SubmissionNotice | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(initialStatus);
   const [analysis, setAnalysis] = useState<AiAnalysis | null>(initialAnalysis);
   const submissionLocked = Boolean(status && status !== "CHANGES_REQUESTED");
   const controlsDisabled = disabled || busy || submissionLocked;
+  const noticeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (notice?.kind !== "error") return;
+    noticeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    noticeRef.current?.focus({ preventScroll: true });
+  }, [notice]);
 
   useEffect(() => {
     if (
@@ -100,29 +114,52 @@ export function SubmissionForm({
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
-    setMessage("");
+    setNotice(null);
     try {
+      const evidenceUrls = links
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const validationError = validateSubmissionDraft({
+        evidenceUrls,
+        summary,
+      });
+      if (validationError) {
+        setNotice({ kind: "error", ...validationError });
+        return;
+      }
       const response = await fetch("/api/submissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          evidenceUrls: links
-            .split(/\r?\n/)
-            .map((item) => item.trim())
-            .filter(Boolean),
+          evidenceUrls,
           summary,
           targetWeekId,
           direction,
           reusePreviousProject,
         }),
       });
-      const result = await response.json();
-      if (!response.ok)
-        throw new Error(result.error?.message ?? "提交失败，请稍后重试。");
-      setMessage("提交成功，正在进行 AI 预检查并等待管理员审核。");
+      const result = (await response.json().catch(() => null)) as {
+        data?: { aiScope?: string };
+        error?: { code?: string; message?: string };
+      } | null;
+      if (!response.ok) {
+        setNotice({
+          kind: "error",
+          code: result?.error?.code ?? `HTTP_${response.status}`,
+          message:
+            result?.error?.message ??
+            "服务器未返回可识别的错误信息，请稍后重试或联系管理员。",
+        });
+        return;
+      }
+      setNotice({
+        kind: "success",
+        message: "提交成功，正在进行 AI 预检查并等待管理员审核。",
+      });
       setStatus("SUBMITTED");
       setAnalysis({
-        scope: result.data?.aiScope ?? "REPOSITORY",
+        scope: result?.data?.aiScope ?? "REPOSITORY",
         status: "PENDING",
         verdict: null,
         summary: "正在分析仓库和 Commit 证据。",
@@ -135,9 +172,14 @@ export function SubmissionForm({
       setLinks("");
       setSummary("");
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "提交失败，请稍后重试。",
-      );
+      setNotice({
+        kind: "error",
+        code: "NETWORK_ERROR",
+        message:
+          error instanceof Error
+            ? `提交请求失败：${error.message}`
+            : "提交请求失败，请检查网络后重试。",
+      });
     } finally {
       setBusy(false);
     }
@@ -255,7 +297,19 @@ export function SubmissionForm({
           disabled={controlsDisabled}
         />
       </label>
-      {message && <p className="form-message">{message}</p>}
+      {notice && (
+        <div
+          ref={noticeRef}
+          className={`form-notice ${notice.kind}`}
+          role={notice.kind === "error" ? "alert" : "status"}
+          aria-live={notice.kind === "error" ? "assertive" : "polite"}
+          tabIndex={-1}
+        >
+          <strong>{notice.kind === "error" ? "提交未成功" : "提交成功"}</strong>
+          <p>{notice.message}</p>
+          {notice.code && <small>错误码：{notice.code}</small>}
+        </div>
+      )}
       {analysis && (
         <div
           className={`submission-ai ${analysis.verdict === "HIGH_RISK" ? "danger" : analysis.verdict === "CHANGES_RECOMMENDED" ? "warning" : ""}`}

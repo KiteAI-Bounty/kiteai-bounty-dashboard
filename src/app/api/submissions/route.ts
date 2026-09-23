@@ -11,8 +11,15 @@ import {
 } from "@/modules/submissions/policy";
 
 const input = z.object({
-  evidenceUrls: z.array(z.url()).min(1).max(20),
-  summary: z.string().trim().min(20).max(4000),
+  evidenceUrls: z
+    .array(z.url("Commit 链接格式不正确。"))
+    .min(1, "请至少提交一条 GitHub Commit 链接。")
+    .max(20, "一次最多提交 20 条 Commit 链接。"),
+  summary: z
+    .string()
+    .trim()
+    .min(20, "本周完成说明至少需要 20 个字符。")
+    .max(4000, "本周完成说明不能超过 4000 个字符。"),
   targetWeekId: z.string().min(1).optional(),
   reusePreviousProject: z.boolean().default(false),
   direction: z
@@ -53,6 +60,27 @@ function parseCommitUrl(value: string) {
     repo: match[2].replace(/\.git$/, ""),
     sha: match[3],
   };
+}
+
+function formatBeijingDate(value: Date, includeTime = false) {
+  if (!Number.isFinite(value.getTime())) return "时间无法识别";
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    month: "2-digit",
+    day: "2-digit",
+    ...(includeTime
+      ? { hour: "2-digit", minute: "2-digit", hour12: false }
+      : {}),
+  }).format(value);
+}
+
+function submissionWindowLabel(week: {
+  number: number;
+  startsAt: string;
+  endsAt: string;
+}) {
+  const inclusiveEnd = new Date(Date.parse(week.endsAt) - 1);
+  return `第 ${week.number} 周（${formatBeijingDate(new Date(week.startsAt))}–${formatBeijingDate(inclusiveEnd)}，北京时间）`;
 }
 
 export async function GET(request: Request) {
@@ -245,8 +273,8 @@ export async function POST(request: Request) {
         throw new ApiError(
           "COMMIT_OUT_OF_RANGE",
           correctionRequestedAt
-            ? "Commit 必须属于原统计周，或创建于管理员要求修改之后。"
-            : "Commit 不属于当前统计周。",
+            ? `Commit ${commit.sha.slice(0, 10)}… 的作者时间为 ${formatBeijingDate(authoredAt, true)}。修改版本必须使用原统计周内的 Commit，或管理员要求修改后新产生的 Commit。`
+            : `Commit ${commit.sha.slice(0, 10)}… 的作者时间为 ${formatBeijingDate(authoredAt, true)}，不属于${submissionWindowLabel(week)}。请提交该统计周内创建的 Commit。`,
           400,
         );
       evidence.push({

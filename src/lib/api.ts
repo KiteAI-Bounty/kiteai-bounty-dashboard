@@ -22,8 +22,12 @@ export function apiError(error: unknown) {
       {
         error: {
           code: "INVALID_INPUT",
-          message: "请求参数不正确。",
+          message: error.issues[0]?.message ?? "请求参数不正确。",
           fields: error.issues.map((issue) => issue.path.join(".")),
+          issues: error.issues.map((issue) => ({
+            field: issue.path.join("."),
+            message: issue.message,
+          })),
         },
       },
       { status: 400 },
