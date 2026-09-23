@@ -15,54 +15,91 @@ export async function importParticipants(csv: string, actorId: string) {
       400,
     );
   }
-  return getDb().$transaction(async (tx) => {
-    const output: Array<{
-      displayName: string;
-      contact: string;
-      wallet: string;
-      result: "created" | "updated";
-    }> = [];
-    for (const row of rows) {
-      const existing = await tx.participantInvite.findUnique({
-        where: { contact: row.contact },
+  return getDb().$transaction(
+    async (tx) => {
+      const existingInvites = await tx.participantInvite.findMany({
+        where: {
+          OR: [
+            { contact: { in: rows.map((row) => row.contact) } },
+            { wallet: { in: rows.map((row) => row.wallet) } },
+          ],
+        },
       });
-      if (existing?.status === "ACTIVE") {
-        if (row.wallet && row.wallet !== existing.wallet)
+      const byContact = new Map(
+        existingInvites.map((invite) => [invite.contact, invite]),
+      );
+      const byWallet = new Map(
+        existingInvites.map((invite) => [invite.wallet, invite]),
+      );
+      const output: Array<{
+        displayName: string;
+        contact: string;
+        wallet: string;
+        result: "created" | "updated";
+      }> = [];
+      const creates: Array<{
+        displayName: string;
+        contact: string;
+        githubLogin: string | null;
+        wallet: string;
+        status: "PENDING";
+      }> = [];
+      const updates: Array<Promise<unknown>> = [];
+      for (const row of rows) {
+        const existing = byContact.get(row.contact);
+        const walletOwner = byWallet.get(row.wallet);
+        if (walletOwner && walletOwner.id !== existing?.id)
           throw new ApiError(
-            "ACTIVE_INVITE_LOCKED",
-            `${row.displayName} 已激活，不能通过导入修改钱包。`,
+            "WALLET_ALREADY_INVITED",
+            `${row.displayName} 的钱包已属于其他白名单记录。`,
             409,
           );
-        await tx.participantInvite.update({
-          where: { id: existing.id },
-          data: { displayName: row.displayName, githubLogin: row.githubLogin },
-        });
-        output.push({ ...row, wallet: existing.wallet, result: "updated" });
-        continue;
+        if (existing?.status === "ACTIVE") {
+          if (row.wallet && row.wallet !== existing.wallet)
+            throw new ApiError(
+              "ACTIVE_INVITE_LOCKED",
+              `${row.displayName} 已激活，不能通过导入修改钱包。`,
+              409,
+            );
+          updates.push(
+            tx.participantInvite.update({
+              where: { id: existing.id },
+              data: {
+                displayName: row.displayName,
+                githubLogin: row.githubLogin,
+              },
+            }),
+          );
+          output.push({ ...row, wallet: existing.wallet, result: "updated" });
+          continue;
+        }
+        const data = {
+          displayName: row.displayName,
+          githubLogin: row.githubLogin,
+          wallet: row.wallet,
+          status: "PENDING" as const,
+        };
+        if (existing)
+          updates.push(
+            tx.participantInvite.update({ where: { id: existing.id }, data }),
+          );
+        else creates.push({ ...data, contact: row.contact });
+        output.push({ ...row, result: existing ? "updated" : "created" });
       }
-      const data = {
-        displayName: row.displayName,
-        githubLogin: row.githubLogin,
-        wallet: row.wallet,
-        status: "PENDING" as const,
-      };
-      if (existing)
-        await tx.participantInvite.update({ where: { id: existing.id }, data });
-      else
-        await tx.participantInvite.create({
-          data: { ...data, contact: row.contact },
-        });
-      output.push({ ...row, result: existing ? "updated" : "created" });
-    }
-    await tx.auditLog.create({
-      data: {
-        actorId,
-        action: "participants.import",
-        entityType: "ParticipantInvite",
-        entityId: `batch:${Date.now()}`,
-        after: { count: output.length },
-      },
-    });
-    return output;
-  });
+      if (creates.length)
+        await tx.participantInvite.createMany({ data: creates });
+      await Promise.all(updates);
+      await tx.auditLog.create({
+        data: {
+          actorId,
+          action: "participants.import",
+          entityType: "ParticipantInvite",
+          entityId: `batch:${Date.now()}`,
+          after: { count: output.length },
+        },
+      });
+      return output;
+    },
+    { timeout: 30_000 },
+  );
 }
