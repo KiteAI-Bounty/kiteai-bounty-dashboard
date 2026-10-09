@@ -17,6 +17,7 @@ import { AdminReviewQueue } from "@/components/admin-review-queue";
 import { AdminWallets } from "@/components/admin-wallets";
 import { ParticipantList } from "@/components/participant-list";
 import { WorkerStatusPanel } from "@/components/worker-status-panel";
+import { EcActiveDevelopers } from "@/components/ec-active-developers";
 import { initialCampaign } from "@/modules/campaigns/domain";
 import { getWorkerQueueStatus } from "@/workers/status";
 
@@ -99,6 +100,18 @@ export default async function Admin() {
             note="不能获取登录挑战"
           />
         </section>
+        <EcActiveDevelopers
+          accounts={reviewSubmissions.flatMap((submission) =>
+            submission.user.github
+              ? [
+                  {
+                    githubLogin: submission.user.github.login,
+                    wallet: submission.user.wallet,
+                  },
+                ]
+              : [],
+          )}
+        />
         <ProcessGuide audience="admin" />
         <WorkerStatusPanel initial={workerStatus} />
         <div className="admin-management-grid">
