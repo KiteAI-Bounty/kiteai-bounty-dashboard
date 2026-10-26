@@ -28,9 +28,10 @@ export function EcActiveDevelopers({ accounts }: { accounts: LocalAccount[] }) {
             </span>
           </h2>
           <p>
-            EC 公开活动快照截至 {ecActivitySnapshot.activityThrough}，当前确认
+            EC 公开数据包 {ecActivitySnapshot.snapshotVersion}，活动统计截至{" "}
+            {ecActivitySnapshot.activityThrough}；28 天窗口内确认{" "}
             {ecSnapshotCommitCount()} 个有效
-            Commit。此处展示已核验快照，不代表实时数据。
+            Commit。数据包生成后可能仍有同步延迟。
           </p>
         </div>
         <a
@@ -97,7 +98,11 @@ export function EcActiveDevelopers({ accounts }: { accounts: LocalAccount[] }) {
       </div>
       <div className="table-footer">
         <span>KiteAI 生态 ID：{ecActivitySnapshot.ecosystemId}</span>
-        <span>后续数据以 EC 新快照为准</span>
+        <span>
+          一次性 {ecActivitySnapshot.oneTimeDevelopers} · 兼职{" "}
+          {ecActivitySnapshot.partTimeDevelopers} · 全职{" "}
+          {ecActivitySnapshot.fullTimeDevelopers}
+        </span>
       </div>
     </section>
   );
