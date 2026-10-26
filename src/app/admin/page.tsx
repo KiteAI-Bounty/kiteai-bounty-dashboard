@@ -16,19 +16,17 @@ import { ParticipantImport } from "@/components/participant-import";
 import { AdminReviewQueue } from "@/components/admin-review-queue";
 import { AdminWallets } from "@/components/admin-wallets";
 import { ParticipantList } from "@/components/participant-list";
-import { WorkerStatusPanel } from "@/components/worker-status-panel";
 import { EcActiveDevelopers } from "@/components/ec-active-developers";
 import { AdminGithubContributions } from "@/components/admin-github-contributions";
 import { initialCampaign } from "@/modules/campaigns/domain";
 import { SECOND_MONTH_KEY } from "@/modules/github-contributions/sync";
-import { getWorkerQueueStatus } from "@/workers/status";
 
 export default async function Admin() {
   if (readEnvironment(process.env).DATA_MODE !== "demo") {
     const user = await getCurrentUser();
     if (!user || user.role !== "ADMIN")
       return <LockedPage title="需要管理员身份" />;
-    const [participants, reviewSubmissions, workerStatus, githubPullRequests] =
+    const [participants, reviewSubmissions, githubPullRequests] =
       await Promise.all([
         getDb().participantInvite.findMany({
           orderBy: { createdAt: "desc" },
@@ -48,7 +46,6 @@ export default async function Admin() {
             },
           },
         }),
-        getWorkerQueueStatus(),
         getDb().githubPullRequest.findMany({
           where: { reportMonth: SECOND_MONTH_KEY },
           orderBy: [{ createdAt: "desc" }, { prNumber: "desc" }],
@@ -120,7 +117,6 @@ export default async function Admin() {
           )}
         />
         <ProcessGuide audience="admin" />
-        <WorkerStatusPanel initial={workerStatus} />
         <div className="admin-management-grid">
           <ParticipantImport />
           <AdminWallets />
