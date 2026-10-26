@@ -26,7 +26,8 @@
     "worker": "tsx src/workers/index.ts",
     "worker:once": "tsx src/workers/index.ts --once",
     "worker:check": "tsx src/workers/index.ts --check",
-    "ai:check": "tsx scripts/check-glm.ts"
+    "ai:check": "tsx scripts/check-glm.ts",
+    "github:sync": "tsx scripts/sync-github-contributions.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",

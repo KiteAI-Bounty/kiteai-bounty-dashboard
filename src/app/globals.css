@@ -1808,6 +1808,80 @@ tbody tr:hover {
   display: flex;
   gap: 6px;
 }
+.github-contributions {
+  margin-bottom: 18px;
+}
+.github-contributions .panel-title {
+  align-items: flex-start;
+}
+.github-contribution-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin: 0 25px 16px;
+  padding: 14px;
+  border: 1px solid #dce7df;
+  border-radius: 8px;
+  background: #f5faf6;
+  color: #64736a;
+  font-size: 11px;
+}
+.github-contribution-stats strong {
+  color: #315f42;
+  font-size: 17px;
+}
+.github-filter-tabs {
+  padding-top: 0;
+  padding-bottom: 10px;
+  border-bottom: 0;
+}
+.github-pr-table-wrap {
+  padding: 0 25px 25px;
+  overflow-x: auto;
+}
+.github-pr-table {
+  min-width: 900px;
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr 2fr 0.7fr 0.85fr;
+  align-items: center;
+  gap: 14px;
+}
+.github-pr-table-head {
+  padding: 13px 14px 9px;
+  color: #8a968d;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.github-pr-table-row {
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafcf9;
+  color: #53645a;
+  font-size: 11px;
+}
+.github-pr-table-row > div,
+.github-pr-table-row > a {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.github-pr-table-row a {
+  color: #315f42;
+  text-decoration: none;
+}
+.github-pr-table-row a span {
+  overflow: hidden;
+  color: #53645a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.github-pr-table-row small {
+  color: #8a968d;
+}
 .table-pagination {
   display: flex;
   align-items: center;

@@ -87,6 +87,32 @@ model GithubAccount {
   user         User     @relation(fields: [userId], references: [id])
 }
 
+model GithubPullRequest {
+  id             String    @id @default(cuid())
+  reportMonth    String
+  source         String
+  repoOwner      String
+  repoName       String
+  prNumber       Int
+  url            String    @unique
+  title          String
+  authorLogin    String
+  authorGithubId BigInt?
+  authorType     String
+  state          String
+  isDraft        Boolean   @default(false)
+  createdAt      DateTime  @db.Timestamptz(3)
+  updatedAt      DateTime  @db.Timestamptz(3)
+  closedAt       DateTime? @db.Timestamptz(3)
+  mergedAt       DateTime? @db.Timestamptz(3)
+  syncedAt       DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@unique([repoOwner, repoName, prNumber])
+  @@index([reportMonth, source])
+  @@index([reportMonth, state])
+  @@index([reportMonth, authorLogin])
+}
+
 model WalletNonce {
   id         String    @id @default(cuid())
   wallet     String    @db.VarChar(42)

@@ -18,7 +18,9 @@ import { AdminWallets } from "@/components/admin-wallets";
 import { ParticipantList } from "@/components/participant-list";
 import { WorkerStatusPanel } from "@/components/worker-status-panel";
 import { EcActiveDevelopers } from "@/components/ec-active-developers";
+import { AdminGithubContributions } from "@/components/admin-github-contributions";
 import { initialCampaign } from "@/modules/campaigns/domain";
+import { SECOND_MONTH_KEY } from "@/modules/github-contributions/sync";
 import { getWorkerQueueStatus } from "@/workers/status";
 
 export default async function Admin() {
@@ -26,27 +28,32 @@ export default async function Admin() {
     const user = await getCurrentUser();
     if (!user || user.role !== "ADMIN")
       return <LockedPage title="需要管理员身份" />;
-    const [participants, reviewSubmissions, workerStatus] = await Promise.all([
-      getDb().participantInvite.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 200,
-      }),
-      getDb().submission.findMany({
-        orderBy: { submittedAt: "asc" },
-        take: 200,
-        include: {
-          user: { include: { github: true } },
-          week: true,
-          repository: { include: { registrations: true } },
-          revisions: {
-            orderBy: { version: "desc" },
-            take: 1,
-            include: { evidence: true },
+    const [participants, reviewSubmissions, workerStatus, githubPullRequests] =
+      await Promise.all([
+        getDb().participantInvite.findMany({
+          orderBy: { createdAt: "desc" },
+          take: 200,
+        }),
+        getDb().submission.findMany({
+          orderBy: { submittedAt: "asc" },
+          take: 200,
+          include: {
+            user: { include: { github: true } },
+            week: true,
+            repository: { include: { registrations: true } },
+            revisions: {
+              orderBy: { version: "desc" },
+              take: 1,
+              include: { evidence: true },
+            },
           },
-        },
-      }),
-      getWorkerQueueStatus(),
-    ]);
+        }),
+        getWorkerQueueStatus(),
+        getDb().githubPullRequest.findMany({
+          where: { reportMonth: SECOND_MONTH_KEY },
+          orderBy: [{ createdAt: "desc" }, { prNumber: "desc" }],
+        }),
+      ]);
     const repositoryIds = [
       ...new Set(reviewSubmissions.map((item) => item.repositoryId)),
     ];
@@ -118,6 +125,26 @@ export default async function Admin() {
           <ParticipantImport />
           <AdminWallets />
         </div>
+        <AdminGithubContributions
+          reportMonth={SECOND_MONTH_KEY}
+          items={githubPullRequests.map((item) => ({
+            id: item.id,
+            reportMonth: item.reportMonth,
+            source: item.source,
+            repoOwner: item.repoOwner,
+            repoName: item.repoName,
+            prNumber: item.prNumber,
+            url: item.url,
+            title: item.title,
+            authorLogin: item.authorLogin,
+            authorType: item.authorType,
+            state: item.state,
+            isDraft: item.isDraft,
+            createdAt: item.createdAt.toISOString(),
+            mergedAt: item.mergedAt?.toISOString() ?? null,
+            syncedAt: item.syncedAt.toISOString(),
+          }))}
+        />
         <AdminReviewQueue
           aiEnabled={Boolean(process.env.GLM_API_KEY)}
           weekNumbers={initialCampaign.weeks.map((week) => week.number)}
